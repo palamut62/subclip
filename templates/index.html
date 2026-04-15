@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ReClip — Free Media Downloader</title>
+  <title>ReClip — Free Media Downloader and Dub</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -48,7 +48,7 @@
       padding: 60px 24px 80px;
     }
 
-    .brand { margin-bottom: 48px; }
+    .brand { margin-bottom: 48px; position: relative; }
     .brand h1 {
       font-family: 'Instrument Serif', serif;
       font-size: 4.2rem;
@@ -64,6 +64,137 @@
       color: var(--muted);
       letter-spacing: 0.04em;
       text-transform: uppercase;
+    }
+
+    .settings-btn {
+      position: absolute;
+      top: 4px;
+      right: 0;
+      width: 36px;
+      height: 36px;
+      border: 1.5px solid var(--card-border);
+      border-radius: 50%;
+      background: var(--card);
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .settings-btn:hover { border-color: var(--fg); color: var(--fg); }
+    .settings-btn svg { width: 16px; height: 16px; }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--card);
+      border: 1.5px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 28px;
+      width: min(480px, calc(100vw - 32px));
+      max-height: 90vh;
+      overflow-y: auto;
+      animation: slideUp 0.25s cubic-bezier(0.16,1,0.3,1);
+    }
+    .modal-title {
+      font-family: 'Instrument Serif', serif;
+      font-size: 1.4rem;
+      margin-bottom: 4px;
+    }
+    .modal-sub {
+      font-size: 0.68rem;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+
+    .setting-row { margin-bottom: 18px; }
+    .setting-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .setting-badge {
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 0.62rem;
+      font-weight: 500;
+      letter-spacing: 0.03em;
+    }
+    .setting-badge.ok { background: rgba(45,138,78,0.12); color: var(--success); }
+    .setting-badge.missing { background: rgba(196,61,61,0.1); color: var(--error); }
+
+    .setting-input-row {
+      display: flex;
+      gap: 8px;
+    }
+    .setting-input {
+      flex: 1;
+      padding: 10px 14px;
+      border: 1.5px solid var(--card-border);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.8rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .setting-input:focus { border-color: var(--accent); }
+    .setting-input::placeholder { color: var(--muted); }
+
+    .setting-hint {
+      font-size: 0.65rem;
+      color: var(--muted);
+      margin-top: 5px;
+    }
+    .setting-hint a { color: var(--accent); text-decoration: none; }
+    .setting-hint a:hover { text-decoration: underline; }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 24px;
+      justify-content: flex-end;
+    }
+    .modal-btn {
+      padding: 9px 20px;
+      border-radius: 8px;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.76rem;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+    .modal-btn.cancel { background: var(--bg); color: var(--muted); border: 1.5px solid var(--card-border); }
+    .modal-btn.cancel:hover { color: var(--fg); }
+    .modal-btn.save { background: var(--accent); color: #fff; }
+    .modal-btn.save:hover { background: var(--accent-hover); }
+    .modal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .modal-divider {
+      border: none;
+      border-top: 1px solid var(--card-border);
+      margin: 20px 0;
     }
 
     textarea {
@@ -384,7 +515,84 @@
   <div class="page">
     <div class="brand">
       <h1>Re<em>Clip</em></h1>
-      <p>Free media downloader</p>
+      <p>Free media downloader and dub</p>
+      <button class="settings-btn" onclick="openSettings()" title="Ayarlar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settingsOverlay" onclick="closeOnBackdrop(event)">
+      <div class="modal">
+        <div class="modal-title">Ayarlar</div>
+        <div class="modal-sub">API key'leri kaydet - yeniden baslatma gerekmez</div>
+
+        <div class="setting-row">
+          <div class="setting-label">
+            Groq API Key
+            <span class="setting-badge missing" id="groq-badge">Ayarli degil</span>
+          </div>
+          <div class="setting-input-row">
+            <input class="setting-input" id="groq-key" type="password"
+              placeholder="gsk_..." autocomplete="off" spellcheck="false">
+          </div>
+          <div class="setting-hint">
+            Ucretsiz - <a href="https://console.groq.com" target="_blank">console.groq.com</a>
+            &mdash; Whisper transkripsiyon icin (~80 dk &rarr; ~3 dk)
+          </div>
+        </div>
+
+        <hr class="modal-divider">
+
+        <div class="setting-row">
+          <div class="setting-label">
+            OpenRouter API Key
+            <span class="setting-badge missing" id="or-badge">Ayarli degil</span>
+          </div>
+          <div class="setting-input-row">
+            <input class="setting-input" id="or-key" type="password"
+              placeholder="sk-or-..." autocomplete="off" spellcheck="false">
+          </div>
+          <div class="setting-hint">
+            <a href="https://openrouter.ai" target="_blank">openrouter.ai</a>
+            &mdash; LLM ceviri icin (~$0.006 / 250 dk video)
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-label">OpenRouter Model <span style="opacity:.5">(opsiyonel)</span></div>
+          <input class="setting-input" id="or-model" type="text"
+            placeholder="deepseek/deepseek-chat-v3-0324" autocomplete="off" spellcheck="false">
+          <div class="setting-hint">
+            Bos birakimrsan varsayilan kullanilir.
+            Ucuz alternatifler: <code>google/gemini-flash-1.5</code>, <code>meta-llama/llama-3.1-8b-instruct:free</code>
+          </div>
+        </div>
+
+        <hr class="modal-divider">
+
+        <div class="setting-row">
+          <div class="setting-label">
+            Colab Whisper URL
+            <span class="setting-badge missing" id="colab-badge">Ayarli degil</span>
+            <span style="font-size:0.58rem;color:var(--success);font-weight:600;text-transform:uppercase;letter-spacing:.04em">EN HIZLI</span>
+          </div>
+          <input class="setting-input" id="colab-url" type="text"
+            placeholder="https://xxxx-xx-xx-xx-xx.ngrok-free.app" autocomplete="off" spellcheck="false">
+          <div class="setting-hint">
+            <code>colab_whisper.ipynb</code> notebook'unu Google Colab'da ac (T4 GPU), calistir ve URL'yi buraya yaz.
+            Aktifken Colab GPU kullanilir &mdash; 250 dk video ~5-8 dk transkripsiyon.
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="modal-btn cancel" onclick="closeSettings()">Iptal</button>
+          <button class="modal-btn save" id="saveBtn" onclick="saveSettings()">Kaydet</button>
+        </div>
+      </div>
     </div>
 
     <textarea id="urls" placeholder="Paste one or more URLs..." rows="2"></textarea>
@@ -395,7 +603,44 @@
         <button class="pill active" data-format="video" onclick="setFormat(this)">MP4</button>
         <button class="pill" data-format="audio" onclick="setFormat(this)">MP3</button>
       </div>
+      <button class="pill" id="dubToggle" onclick="toggleDub()" title="Dublaj ekle">Dub</button>
       <button class="fetch-btn" id="goBtn" onclick="go()">Fetch</button>
+    </div>
+
+    <div id="dubOptions" style="display:none; margin-top:8px; gap:8px; align-items:center; flex-wrap:wrap;">
+      <select id="dubEngine" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px 8px;font-size:13px;">
+        <option value="fast">Hızlı (edge-tts)</option>
+        <option value="krillin_deepseek">KrillinAI + DeepSeek (online)</option>
+        <option value="krillin_ollama">KrillinAI + Ollama (local)</option>
+      </select>
+      <select id="srcLang" title="Kaynak dil" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px 8px;font-size:13px;">
+        <option value="auto">Otomatik algıla</option>
+        <option value="en">İngilizce</option>
+        <option value="tr">Türkçe</option>
+        <option value="de">Almanca</option>
+        <option value="es">İspanyolca</option>
+        <option value="fr">Fransızca</option>
+        <option value="it">İtalyanca</option>
+        <option value="ru">Rusça</option>
+        <option value="ar">Arapça</option>
+        <option value="ja">Japonca</option>
+        <option value="zh">Çince</option>
+        <option value="pt">Portekizce</option>
+      </select>
+      <span style="color:#666;">→</span>
+      <select id="tgtLang" title="Hedef dil" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px 8px;font-size:13px;">
+        <option value="tr">Türkçe</option>
+        <option value="en">İngilizce</option>
+        <option value="de">Almanca</option>
+        <option value="es">İspanyolca</option>
+        <option value="fr">Fransızca</option>
+        <option value="it">İtalyanca</option>
+        <option value="ru">Rusça</option>
+        <option value="ar">Arapça</option>
+        <option value="ja">Japonca</option>
+        <option value="zh">Çince</option>
+        <option value="pt">Portekizce</option>
+      </select>
     </div>
 
     <div id="cards" class="cards"></div>
@@ -409,7 +654,92 @@
 
   <script>
     let currentFormat = 'video';
+    let dubEnabled = false;
     let cardData = [];
+
+    // --- Settings ---
+    async function openSettings() {
+      document.getElementById('settingsOverlay').classList.add('open');
+      try {
+        const res = await fetch('/api/settings');
+        const data = await res.json();
+
+        const groqSet = data.GROQ_API_KEY?.set;
+        const orSet   = data.OPENROUTER_API_KEY?.set;
+        const colabSet = data.COLAB_URL?.set;
+        const orModel = data.OPENROUTER_MODEL?.set ? data.OPENROUTER_MODEL.masked : '';
+        const colabUrl = data.COLAB_URL?.set ? data.COLAB_URL.masked : '';
+
+        const groqBadge = document.getElementById('groq-badge');
+        groqBadge.textContent = groqSet ? 'Ayarli' : 'Ayarli degil';
+        groqBadge.className = 'setting-badge ' + (groqSet ? 'ok' : 'missing');
+
+        const orBadge = document.getElementById('or-badge');
+        orBadge.textContent = orSet ? 'Ayarli' : 'Ayarli degil';
+        orBadge.className = 'setting-badge ' + (orSet ? 'ok' : 'missing');
+
+        const colabBadge = document.getElementById('colab-badge');
+        colabBadge.textContent = colabSet ? 'Ayarli' : 'Ayarli degil';
+        colabBadge.className = 'setting-badge ' + (colabSet ? 'ok' : 'missing');
+
+        document.getElementById('groq-key').placeholder = groqSet ? '(degistirmek icin yaz)' : 'gsk_...';
+        document.getElementById('or-key').placeholder   = orSet   ? '(degistirmek icin yaz)' : 'sk-or-...';
+        document.getElementById('or-model').value = orModel;
+        document.getElementById('colab-url').value = colabUrl;
+      } catch (_) {}
+    }
+
+    function closeSettings() {
+      document.getElementById('settingsOverlay').classList.remove('open');
+      document.getElementById('groq-key').value = '';
+      document.getElementById('or-key').value   = '';
+      document.getElementById('colab-url').value = '';
+    }
+
+    function closeOnBackdrop(e) {
+      if (e.target === document.getElementById('settingsOverlay')) closeSettings();
+    }
+
+    async function saveSettings() {
+      const btn = document.getElementById('saveBtn');
+      btn.disabled = true;
+      btn.textContent = 'Kaydediliyor...';
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            GROQ_API_KEY:       document.getElementById('groq-key').value.trim(),
+            COLAB_URL:          document.getElementById('colab-url').value.trim(),
+            OPENROUTER_API_KEY: document.getElementById('or-key').value.trim(),
+            OPENROUTER_MODEL:   document.getElementById('or-model').value.trim(),
+          }),
+        });
+        closeSettings();
+      } catch (_) {
+        alert('Kaydetme hatasi');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Kaydet';
+      }
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeSettings();
+    });
+
+    function toggleDub() {
+      dubEnabled = !dubEnabled;
+      const btn = document.getElementById('dubToggle');
+      const opts = document.getElementById('dubOptions');
+      if (dubEnabled) {
+        btn.classList.add('active');
+        opts.style.display = 'flex';
+      } else {
+        btn.classList.remove('active');
+        opts.style.display = 'none';
+      }
+    }
 
     function setFormat(btn) {
       document.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
@@ -432,6 +762,11 @@
       const d = document.createElement('div');
       d.textContent = s;
       return d.innerHTML;
+    }
+
+    function canDubCard(c) {
+      const name = (c.filename || '').toLowerCase();
+      return !!c.jobId && (name.endsWith('.mp4') || currentFormat === 'video');
     }
 
     function friendlyError(err) {
@@ -569,8 +904,13 @@
         actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Download</button>${qualityChips}`;
       } else if (c.status === 'downloading') {
         actionHtml = `<span class="card-status downloading"><span class="spin"></span> Downloading...</span>`;
+      } else if (c.status === 'dubbing') {
+        actionHtml = `<span class="card-status downloading"><span class="spin"></span> TR Dublaj yapılıyor (2-5 dk)...</span>`;
       } else if (c.status === 'done') {
-        actionHtml = `<button class="card-dl-btn done" onclick="saveCard(${idx})">Save</button>
+        const dubBtn = canDubCard(c)
+          ? `<button class="card-dl-btn" onclick="addDub(${idx})">Dublaj Ekle</button>`
+          : '';
+        actionHtml = `<button class="card-dl-btn done" onclick="saveCard(${idx})">Save</button>${dubBtn}
           <span class="card-status done">${esc(c.filename || '')}</span>`;
       } else if (c.status === 'error') {
         actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Retry</button>
@@ -617,6 +957,10 @@
             url: c.url,
             format: currentFormat,
             format_id: c.selectedFormatId,
+            dub: dubEnabled,
+            dub_engine: dubEnabled ? document.getElementById('dubEngine').value : 'fast',
+            src_lang: dubEnabled ? document.getElementById('srcLang').value : 'auto',
+            tgt_lang: dubEnabled ? document.getElementById('tgtLang').value : 'tr',
             title: c.title || '',
           }),
         });
@@ -647,7 +991,8 @@
             c.status = 'done';
             c.filename = data.filename;
             renderCard(idx);
-            saveCard(idx);
+          } else if (data.status === 'dubbing') {
+            if (c.status !== 'dubbing') { c.status = 'dubbing'; renderCard(idx); }
           } else if (data.status === 'error') {
             clearInterval(iv);
             c.status = 'error';
@@ -661,6 +1006,39 @@
           renderCard(idx);
         }
       }, 1000);
+    }
+
+    async function addDub(idx) {
+      const c = cardData[idx];
+      if (!c.jobId) return;
+
+      c.status = 'dubbing';
+      c.error = null;
+      renderCard(idx);
+
+      try {
+        const res = await fetch(`/api/dub/${c.jobId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dub_engine: document.getElementById('dubEngine').value,
+            src_lang: document.getElementById('srcLang').value,
+            tgt_lang: document.getElementById('tgtLang').value,
+          }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          c.status = 'error';
+          c.error = data.error;
+          renderCard(idx);
+          return;
+        }
+        pollCard(idx);
+      } catch (err) {
+        c.status = 'error';
+        c.error = err.message;
+        renderCard(idx);
+      }
     }
 
     function saveCard(idx) {

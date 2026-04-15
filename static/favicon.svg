@@ -1,4 +1,26 @@
 <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
- <circle cx="64" cy="64" r="53.336" fill="#e85d2a"/>
- <path d="m53.008 49.051 26.996 14.949-26.996 14.949z" fill="#fff"/>
+  <!-- Koyu yuvarlatilmis zemin -->
+  <rect x="0" y="0" width="128" height="128" rx="28" fill="#2a2a26"/>
+
+  <!-- "R" harfi - krem beyaz -->
+  <!-- Sol dikey govde -->
+  <rect x="24" y="18" width="15" height="92" rx="3" fill="#f4f1eb"/>
+  <!-- Ust yatay kol -->
+  <rect x="24" y="18" width="52" height="14" rx="3" fill="#f4f1eb"/>
+  <!-- Sag yay yarim daire (bump) - 3 parcayla yaklasik -->
+  <rect x="69" y="18" width="14" height="10" rx="3" fill="#f4f1eb"/>
+  <rect x="75" y="26" width="11" height="24" rx="3" fill="#f4f1eb"/>
+  <rect x="69" y="44" width="14" height="10" rx="3" fill="#f4f1eb"/>
+  <!-- Orta yatay kol -->
+  <rect x="24" y="50" width="56" height="13" rx="3" fill="#f4f1eb"/>
+  <!-- Sag bacak (diagonal) -->
+  <rect x="60" y="63" width="15" height="47" rx="3"
+        transform="rotate(20 67 86)" fill="#f4f1eb"/>
+
+  <!-- Turuncu download rozeti - sag alt -->
+  <circle cx="96" cy="96" r="26" fill="#e85d2a"/>
+  <!-- Beyaz asagi ok - govde -->
+  <rect x="91" y="80" width="10" height="15" rx="2.5" fill="white"/>
+  <!-- Beyaz asagi ok - uc -->
+  <polygon points="80,96 112,96 96,114" fill="white"/>
 </svg>
