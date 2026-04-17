@@ -95,16 +95,16 @@ def _transcribe_local(wav_path: str) -> tuple[list, str]:
 # Transkripsiyon - Groq Whisper API
 # ---------------------------------------------------------------------------
 
-def _transcribe_colab(wav_path: str, src_lang: str) -> tuple[list, str]:
+def _transcribe_colab(wav_path: str, src_lang: str, diarize: bool = False) -> tuple[list, str]:
     """
     Colab Whisper API ile transkripsiyon - GPU hizli, rate limit yok.
     Dosyayi 32kbps MP3'e sikistirip tek istekte gonderir.
+    diarize=True ise segment tuple yerine [start, end, text, speaker] dict dondurur.
     """
     import requests
 
     colab_url = os.environ["COLAB_URL"].rstrip("/")
 
-    # WAV -> kucuk MP3 (upload icin)
     mp3_path = wav_path.replace(".wav", "_upload.mp3")
     subprocess.run([
         "ffmpeg", "-y", "-i", wav_path,
@@ -116,15 +116,21 @@ def _transcribe_colab(wav_path: str, src_lang: str) -> tuple[list, str]:
             resp = requests.post(
                 f"{colab_url}/transcribe",
                 files={"file": ("audio.mp3", f, "audio/mpeg")},
-                data={"src_lang": src_lang},
-                timeout=900,  # 15 dk - buyuk dosyalar icin
+                data={"src_lang": src_lang, "diarize": "true" if diarize else "false"},
+                timeout=1800,
             )
         if resp.status_code != 200:
             raise RuntimeError(f"Colab API hatasi {resp.status_code}: {resp.text[:200]}")
         data = resp.json()
         if "error" in data:
             raise RuntimeError(f"Colab transkripsiyon hatasi: {data['error']}")
-        segments = [(s["start"], s["end"], s["text"]) for s in data["segments"]]
+        if diarize and data.get("diarized"):
+            segments = [
+                {"start": s["start"], "end": s["end"], "text": s["text"], "speaker": s.get("speaker", "SPK0")}
+                for s in data["segments"]
+            ]
+        else:
+            segments = [(s["start"], s["end"], s["text"]) for s in data["segments"]]
         return segments, data.get("language", "en")
     finally:
         try:
@@ -305,15 +311,32 @@ async def _tts_all(segments: list, voice: str, workdir: str) -> None:
     )
 
 
+async def _tts_all_multi(segments_with_voice: list, workdir: str) -> None:
+    """segments_with_voice: [(start, end, text, voice), ...]"""
+    sem = asyncio.Semaphore(8)
+
+    async def one(idx: int, text: str, voice: str) -> None:
+        async with sem:
+            try:
+                comm = edge_tts.Communicate(text, voice)
+                await comm.save(os.path.join(workdir, f"seg_{idx}.mp3"))
+            except Exception:
+                pass
+
+    await asyncio.gather(
+        *(one(i, t, v) for i, (_, _, t, v) in enumerate(segments_with_voice) if t.strip())
+    )
+
+
 # ---------------------------------------------------------------------------
 # Hiz ayarlama (TTS pencereye sigmiyorsa)
 # ---------------------------------------------------------------------------
 
 def _speed_adjust(mp3: str, window_sec: float, workdir: str, idx: int) -> str:
     dur = _audio_duration(mp3)
-    if dur is None or dur <= window_sec * 1.05:
+    if dur is None or dur <= window_sec * 1.25:
         return mp3
-    speed = min(1.6, dur / window_sec)
+    speed = min(1.25, dur / window_sec)
     out = os.path.join(workdir, f"seg_{idx}_fast.mp3")
     r = subprocess.run(
         ["ffmpeg", "-y", "-i", mp3, "-filter:a", f"atempo={speed:.3f}", out],
@@ -430,7 +453,9 @@ def dub_video(video_path: str, out_path: str, keep_original_volume: float = 0.15
             mp3 = os.path.join(tmp, f"seg_{idx}.mp3")
             if not os.path.exists(mp3) or os.path.getsize(mp3) == 0:
                 continue
-            mp3 = _speed_adjust(mp3, max(0.5, end - start), tmp, idx)
+            next_start = segments[idx + 1][0] if idx + 1 < len(segments) else start + (end - start) * 2
+            window = max(0.8, next_start - start)
+            mp3 = _speed_adjust(mp3, window, tmp, idx)
             valid.append((start, mp3))
 
         if not valid:
@@ -464,5 +489,183 @@ def dub_video(video_path: str, out_path: str, keep_original_volume: float = 0.15
                 "-shortest",
                 out_path,
             ], check=True, capture_output=True)
+        if on_progress:
+            on_progress(100, "Dublaj tamamlandi")
+
+
+# ---------------------------------------------------------------------------
+# Multi-speaker: analiz + finalize
+# ---------------------------------------------------------------------------
+
+def _guess_gender_from_pitch(f0_hz: float | None) -> str:
+    if not f0_hz or f0_hz <= 0:
+        return "female"
+    if f0_hz < 160:
+        return "male"
+    if f0_hz > 255:
+        return "child"
+    return "female"
+
+
+def _extract_speaker_audio(wav_path: str, segments: list, workdir: str) -> dict[str, str]:
+    """Her speaker icin o speaker'a ait tum segmentlerden tek bir wav birlestir (pitch icin)."""
+    by_spk: dict[str, list] = {}
+    for s in segments:
+        by_spk.setdefault(s["speaker"], []).append((s["start"], s["end"]))
+
+    paths: dict[str, str] = {}
+    for spk, ranges in by_spk.items():
+        ranges.sort()
+        select = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in ranges)
+        out = os.path.join(workdir, f"spk_{spk}.wav")
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", wav_path, "-af", f"aselect='{select}',asetpts=N/SR/TB",
+             "-ac", "1", "-ar", "16000", out],
+            capture_output=True,
+        )
+        if os.path.exists(out) and os.path.getsize(out) > 1000:
+            paths[spk] = out
+    return paths
+
+
+def _mean_pitch(wav_path: str) -> float | None:
+    try:
+        import librosa
+        import numpy as np
+
+        y, sr = librosa.load(wav_path, sr=16000, mono=True)
+        if len(y) < sr // 4:
+            return None
+        f0, voiced, _ = librosa.pyin(y, fmin=60, fmax=500, sr=sr)
+        vals = f0[voiced] if voiced is not None else f0
+        vals = vals[~np.isnan(vals)] if hasattr(vals, "size") else []
+        if len(vals) < 10:
+            return None
+        return float(np.median(vals))
+    except Exception:
+        return None
+
+
+def analyze_speakers(video_path: str, workdir: str, src_lang: str = "auto",
+                     on_progress: Callable[[float, str], None] | None = None) -> dict:
+    """Videoyu transcribe + diarize eder, her speaker icin cinsiyet tahmini yapar.
+    Returns: {segments, source_lang, speakers: [{id, segment_count, total_seconds, pitch_hz, gender_guess}]}
+    """
+    if not os.environ.get("COLAB_URL"):
+        raise RuntimeError("Coklu konusmaci modu icin COLAB_URL gerekli (pyannote GPU'da calisir).")
+
+    wav = os.path.join(workdir, "analyze.wav")
+    if on_progress:
+        on_progress(8, "Ses cikariliyor")
+    _extract_audio(video_path, wav)
+
+    if on_progress:
+        on_progress(25, "Transcribe + diarize")
+    segments, detected = _transcribe_colab(wav, src_lang, diarize=True)
+    if not segments or not isinstance(segments[0], dict):
+        raise RuntimeError("Colab diarization dondurmedi (HF_TOKEN ayarli mi?).")
+
+    source = detected if src_lang == "auto" else src_lang
+
+    if on_progress:
+        on_progress(70, "Konusmaci cinsiyeti tahmin ediliyor")
+    spk_audios = _extract_speaker_audio(wav, segments, workdir)
+
+    by_spk: dict[str, list] = {}
+    for s in segments:
+        by_spk.setdefault(s["speaker"], []).append(s)
+
+    speakers = []
+    for spk_id, segs in sorted(by_spk.items()):
+        total = sum(s["end"] - s["start"] for s in segs)
+        pitch = _mean_pitch(spk_audios[spk_id]) if spk_id in spk_audios else None
+        speakers.append({
+            "id": spk_id,
+            "segment_count": len(segs),
+            "total_seconds": round(total, 1),
+            "pitch_hz": round(pitch, 1) if pitch else None,
+            "gender_guess": _guess_gender_from_pitch(pitch),
+        })
+
+    if on_progress:
+        on_progress(90, "Analiz tamam")
+    return {
+        "segments": segments,
+        "source_lang": source,
+        "speakers": speakers,
+        "audio_path": wav,
+    }
+
+
+def finalize_multi_voice(video_path: str, out_path: str, analysis: dict,
+                         voices_map: dict[str, str], tgt_lang: str = "tr",
+                         keep_original_volume: float = 0.15,
+                         on_progress: Callable[[float, str], None] | None = None) -> None:
+    """analysis['segments'] + voices_map (speaker_id -> gender str) -> final dublaj."""
+    segments = analysis["segments"]
+    source = analysis["source_lang"]
+    use_openrouter = bool(os.environ.get("OPENROUTER_API_KEY"))
+
+    # speaker -> gender -> actual voice
+    lang_voices = VOICE_MAP.get(tgt_lang, {"female": "tr-TR-EmelNeural"})
+    def voice_for(spk: str) -> str:
+        g = voices_map.get(spk, "female")
+        return lang_voices.get(g) or lang_voices.get("female") or next(iter(lang_voices.values()))
+
+    # Dict segmentleri tuple'a cevir (ceviri icin)
+    seg_tuples = [(s["start"], s["end"], s["text"]) for s in segments]
+
+    if source != tgt_lang:
+        if on_progress:
+            on_progress(35, "Ceviri yapiliyor")
+        if use_openrouter:
+            seg_tuples = _translate_openrouter(seg_tuples, source, tgt_lang)
+        else:
+            seg_tuples = _translate_google(seg_tuples, source, tgt_lang)
+
+    # Her segmente voice ekle (speaker bilgisi orijinal segments'te)
+    seg_with_voice = [
+        (s["start"], s["end"], t_tr, voice_for(s["speaker"]))
+        for s, (_, _, t_tr) in zip(segments, seg_tuples)
+    ]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        if on_progress:
+            on_progress(55, "Coklu ses TTS")
+        asyncio.run(_tts_all_multi(seg_with_voice, tmp))
+
+        if on_progress:
+            on_progress(80, "Parcalar hazirlaniyor")
+        valid: list[tuple[float, str]] = []
+        for idx, (start, end, _, _) in enumerate(seg_with_voice):
+            mp3 = os.path.join(tmp, f"seg_{idx}.mp3")
+            if not os.path.exists(mp3) or os.path.getsize(mp3) == 0:
+                continue
+            next_start = seg_with_voice[idx + 1][0] if idx + 1 < len(seg_with_voice) else start + (end - start) * 2
+            window = max(0.8, next_start - start)
+            mp3 = _speed_adjust(mp3, window, tmp, idx)
+            valid.append((start, mp3))
+        if not valid:
+            raise RuntimeError("Gecerli TTS segmenti bulunamadi")
+        valid.sort(key=lambda x: x[0])
+
+        dub_wav = os.path.join(tmp, "dub.wav")
+        if on_progress:
+            on_progress(90, "Ses parcalari birlestiriliyor")
+        _build_dub_track(valid, tmp, dub_wav)
+
+        if on_progress:
+            on_progress(96, "Video final hale getiriliyor")
+        subprocess.run([
+            "ffmpeg", "-y",
+            "-i", video_path,
+            "-i", dub_wav,
+            "-filter_complex",
+            f"[0:a]volume={keep_original_volume}[a0];[a0][1:a]amix=inputs=2:duration=first:dropout_transition=0[aout]",
+            "-map", "0:v", "-map", "[aout]",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+            "-shortest",
+            out_path,
+        ], check=True, capture_output=True)
         if on_progress:
             on_progress(100, "Dublaj tamamlandi")

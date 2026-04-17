@@ -211,9 +211,40 @@ def _finalize_filename(job: dict, chosen: str, suffix: str = "") -> None:
     _save_jobs()
 
 
+def _do_fast_dub(job: dict, video_path: str, out_path: str, src_lang: str, tgt_lang: str,
+                 gender: str, multi_speaker: bool) -> None:
+    from dub import analyze_speakers, dub_video, finalize_multi_voice
+
+    if multi_speaker:
+        import tempfile as _tf
+        workdir = _tf.mkdtemp(prefix=f"ms_{job['job_id']}_")
+        analysis = analyze_speakers(
+            video_path, workdir, src_lang=src_lang,
+            on_progress=lambda p, m: _update_job(job, status="dubbing", stage="dub_analyze",
+                                                 phase_message=m, progress_percent=p),
+        )
+        job["ms_analysis_dir"] = workdir
+        job["ms_analysis"] = {"segments": analysis["segments"], "source_lang": analysis["source_lang"]}
+        job["speakers"] = analysis["speakers"]
+        job["ms_tgt_lang"] = tgt_lang
+        job["ms_out_path"] = out_path
+        job["ms_video_path"] = video_path
+        _update_job(job, status="awaiting_voices", stage="awaiting_voices",
+                    phase_message="Konusmaci atamasi bekleniyor", progress_percent=30)
+        return
+
+    dub_video(
+        video_path, out_path,
+        src_lang=src_lang, tgt_lang=tgt_lang, gender=gender,
+        on_progress=lambda p, msg: _update_job(job, status="dubbing", stage="dub_fast",
+                                               phase_message=msg, progress_percent=p),
+    )
+
+
 def run_download(job_id: str, url: str, format_choice: str, format_id: str | None,
                  dub: bool = False, dub_engine: str = "fast", src_lang: str = "en",
-                 tgt_lang: str = "tr", gender: str = "female") -> None:
+                 tgt_lang: str = "tr", gender: str = "female",
+                 multi_speaker: bool = False) -> None:
     job = jobs[job_id]
     out_template = os.path.join(DOWNLOAD_DIR, f"{job_id}.%(ext)s")
 
@@ -234,6 +265,10 @@ def run_download(job_id: str, url: str, format_choice: str, format_id: str | Non
             try:
                 _update_job(job, status="dubbing", stage="dub_prepare", phase_message="Dublaj baslatiliyor", progress_percent=4)
                 dubbed_path = os.path.join(DOWNLOAD_DIR, f"{job_id}_tr.mp4")
+                job["job_id"] = job_id
+                if multi_speaker and not dub_engine.startswith("krillin"):
+                    _do_fast_dub(job, chosen, dubbed_path, src_lang, tgt_lang, gender, multi_speaker=True)
+                    return
                 if dub_engine.startswith("krillin"):
                     from krillin_client import dub_video as krillin_dub
 
@@ -531,6 +566,64 @@ def check_status(job_id):
         "updated_at": job.get("updated_at"),
         "elapsed_sec": _elapsed_seconds(job),
     })
+
+
+@app.route("/api/speakers/<job_id>")
+def get_speakers(job_id):
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    if job.get("status") != "awaiting_voices":
+        return jsonify({"error": "Job not awaiting voices"}), 400
+    return jsonify({
+        "speakers": job.get("speakers", []),
+        "segment_count": len(job.get("ms_analysis", {}).get("segments", [])),
+    })
+
+
+def _resume_multi_voice(job_id: str, voices_map: dict) -> None:
+    job = jobs[job_id]
+    try:
+        from dub import finalize_multi_voice
+
+        finalize_multi_voice(
+            job["ms_video_path"],
+            job["ms_out_path"],
+            job["ms_analysis"],
+            voices_map,
+            tgt_lang=job.get("ms_tgt_lang", "tr"),
+            on_progress=lambda p, msg: _update_job(
+                job, status="dubbing", stage="dub_ms_finalize",
+                phase_message=msg, progress_percent=p,
+            ),
+        )
+        try:
+            if os.path.exists(job["ms_video_path"]) and job["ms_video_path"] != job["ms_out_path"]:
+                os.remove(job["ms_video_path"])
+        except OSError:
+            pass
+        _update_job(job, status="done", stage="dub_done",
+                    phase_message="Tamamlandi", progress_percent=100)
+        job["file"] = job["ms_out_path"]
+        _finalize_filename(job, job["ms_out_path"])
+    except Exception as e:
+        _update_job(job, status="error", stage="error", error=f"Dublaj hatasi: {e}")
+
+
+@app.route("/api/assign-voices/<job_id>", methods=["POST"])
+def assign_voices(job_id):
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    if job.get("status") != "awaiting_voices":
+        return jsonify({"error": "Job not awaiting voices"}), 400
+    voices_map = (request.json or {}).get("voices", {})
+    if not isinstance(voices_map, dict) or not voices_map:
+        return jsonify({"error": "voices dict gerekli"}), 400
+    thread = threading.Thread(target=_resume_multi_voice, args=(job_id, voices_map))
+    thread.daemon = True
+    thread.start()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/jobs")

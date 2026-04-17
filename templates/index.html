@@ -658,7 +658,7 @@
       <button class="fetch-btn" id="goBtn" onclick="go()">Fetch</button>
     </div>
 
-    <div id="dubOptions" style="display:none; margin-top:8px; gap:8px; align-items:center; flex-wrap:wrap;">
+    <div id="dubOptions" style="display:flex; margin-top:8px; gap:8px; align-items:center; flex-wrap:wrap; opacity:0.75">
       <select id="dubEngine" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px 8px;font-size:13px;">
         <option value="fast">Hızlı (edge-tts)</option>
         <option value="krillin_deepseek">KrillinAI + DeepSeek (online)</option>
@@ -857,12 +857,13 @@
       dubEnabled = !dubEnabled;
       const btn = document.getElementById('dubToggle');
       const opts = document.getElementById('dubOptions');
+      opts.style.display = 'flex';
       if (dubEnabled) {
         btn.classList.add('active');
-        opts.style.display = 'flex';
+        opts.style.opacity = '1';
       } else {
         btn.classList.remove('active');
-        opts.style.display = 'none';
+        opts.style.opacity = '0.75';
       }
     }
 
