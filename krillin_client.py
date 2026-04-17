@@ -206,11 +206,15 @@ def ensure_server(llm: str = "deepseek") -> None:
     if not os.path.exists(KRILLIN_EXE):
         raise RuntimeError(f"KrillinAI binary bulunamadi: {KRILLIN_EXE}")
     log_file = open(LOG_PATH, "ab")
+    shim_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "krillin_shim")
+    env = os.environ.copy()
+    env["PATH"] = shim_dir + os.pathsep + env.get("PATH", "")
     _proc = subprocess.Popen(
         [KRILLIN_EXE],
         cwd=KRILLIN_DIR,
         stdout=log_file,
         stderr=log_file,
+        env=env,
         creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
     )
     for _ in range(60):
