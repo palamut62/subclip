@@ -859,7 +859,28 @@
       if (err.includes('geo')) return 'Video not available in your region';
       if (err.includes('timed out') || err.includes('Timed out')) return 'Request timed out — try again';
       if (err.includes('network') || err.includes('Network')) return 'Network error — check your connection';
-      return err.length > 80 ? err.slice(0, 80) + '...' : err;
+      return err;
+    }
+
+    async function copyError(idx) {
+      const c = cardData[idx];
+      const text = c.error || '';
+      try {
+        await navigator.clipboard.writeText(text);
+        const btn = document.getElementById(`copy-err-${idx}`);
+        if (btn) {
+          const old = btn.textContent;
+          btn.textContent = 'Kopyalandi';
+          setTimeout(() => { btn.textContent = old; }, 1500);
+        }
+      } catch (_) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (_) {}
+        ta.remove();
+      }
     }
 
     document.getElementById('urls').addEventListener('keydown', e => {
@@ -952,7 +973,8 @@
           </div>
           <div class="card-body">
             <div class="card-title" style="color:var(--error)">Could not fetch video</div>
-            <div class="card-error-msg">${esc(friendlyError(c.error || ''))}</div>
+            <div class="card-error-msg" style="white-space:pre-wrap;word-break:break-word;max-height:200px;overflow:auto">${esc(friendlyError(c.error || ''))}</div>
+            <button id="copy-err-${idx}" class="card-dl-btn" style="background:transparent;color:var(--muted);border:1px solid var(--muted);margin-top:6px" onclick="copyError(${idx})">Hatayi kopyala</button>
             <div class="card-error-url">${esc(c.url)}</div>
           </div>
         `;
@@ -1007,7 +1029,8 @@
           <span class="card-status done">${esc(c.filename || '')}</span>`;
       } else if (c.status === 'error') {
         actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Retry</button>
-          <span class="card-status error">${esc(friendlyError(c.error || 'Download failed'))}</span>`;
+          <button id="copy-err-${idx}" class="card-dl-btn" style="background:transparent;color:var(--muted);border:1px solid var(--muted)" onclick="copyError(${idx})">Hatayi kopyala</button>
+          <div class="card-status error" style="white-space:pre-wrap;word-break:break-word;max-height:200px;overflow:auto;width:100%;margin-top:6px">${esc(c.error || 'Download failed')}</div>`;
       }
 
       const timingHtml = c.elapsedSec != null && (c.status === 'downloading' || c.status === 'dubbing' || c.status === 'done')
