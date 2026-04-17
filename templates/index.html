@@ -104,8 +104,13 @@
       width: min(480px, calc(100vw - 32px));
       max-height: 90vh;
       overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none; /* Firefox */
+      -ms-overflow-style: none; /* IE/Edge legacy */
       animation: slideUp 0.25s cubic-bezier(0.16,1,0.3,1);
     }
+    .modal::-webkit-scrollbar { width: 0; height: 0; } /* Chrome/Safari */
     .modal-title {
       font-family: 'Instrument Serif', serif;
       font-size: 1.4rem;
@@ -373,6 +378,30 @@
       align-items: center;
       flex-wrap: wrap;
     }
+    .card-engine-select {
+      padding: 6px 10px;
+      border: 1.5px solid var(--card-border);
+      border-radius: 7px;
+      background: var(--card);
+      color: var(--fg);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.68rem;
+      max-width: 220px;
+    }
+    .card-preview {
+      width: 100%;
+      margin-top: 10px;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--card-border);
+      background: #000;
+    }
+    .card-preview video {
+      width: 100%;
+      display: block;
+      max-height: 260px;
+      background: #000;
+    }
 
     .card-dl-btn {
       padding: 6px 14px;
@@ -400,6 +429,12 @@
     .card-status.downloading { color: var(--accent); }
     .card-status.done { color: var(--success); }
     .card-status.error { color: var(--error); }
+    .card-timing {
+      margin-top: 6px;
+      font-size: 0.66rem;
+      color: var(--muted);
+      letter-spacing: 0.02em;
+    }
 
     .q-chip {
       padding: 4px 10px;
@@ -532,6 +567,38 @@
 
         <div class="setting-row">
           <div class="setting-label">
+            Colab Whisper URL
+            <span class="setting-badge missing" id="colab-badge">Ayarli degil</span>
+            <span style="font-size:0.58rem;color:var(--success);font-weight:600;text-transform:uppercase;letter-spacing:.04em">EN HIZLI</span>
+          </div>
+          <input class="setting-input" id="colab-url" type="text"
+            placeholder="https://xxxx-xx-xx-xx-xx.ngrok-free.app" autocomplete="off" spellcheck="false">
+          <div class="setting-hint">
+            <code>colab_whisper.ipynb</code> notebook'unu Google Colab'da ac (T4 GPU), calistir ve URL'yi buraya yaz.
+            Aktifken Colab GPU kullanilir &mdash; 250 dk video ~5-8 dk transkripsiyon.
+          </div>
+        </div>
+
+        <hr class="modal-divider">
+
+        <div class="setting-row">
+          <div class="setting-label">
+            Lipsync URL (Colab Wav2Lip)
+            <span class="setting-badge missing" id="lipsync-badge">Ayarli degil</span>
+            <span style="font-size:0.58rem;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.04em">OPSIYONEL</span>
+          </div>
+          <input class="setting-input" id="lipsync-url" type="text"
+            placeholder="https://xxxx-xx-xx-xx-xx.ngrok-free.app" autocomplete="off" spellcheck="false">
+          <div class="setting-hint">
+            <code>colab_lipsync.ipynb</code> notebook'unu Colab'da ac (T4 GPU), calistir ve URL'yi buraya yaz.
+            Aktifken dublaj sonunda dudak hareketleri cevrilen sese senkronize edilir.
+          </div>
+        </div>
+
+        <hr class="modal-divider">
+
+        <div class="setting-row">
+          <div class="setting-label">
             Groq API Key
             <span class="setting-badge missing" id="groq-badge">Ayarli degil</span>
           </div>
@@ -569,22 +636,6 @@
           <div class="setting-hint">
             Bos birakimrsan varsayilan kullanilir.
             Ucuz alternatifler: <code>google/gemini-flash-1.5</code>, <code>meta-llama/llama-3.1-8b-instruct:free</code>
-          </div>
-        </div>
-
-        <hr class="modal-divider">
-
-        <div class="setting-row">
-          <div class="setting-label">
-            Colab Whisper URL
-            <span class="setting-badge missing" id="colab-badge">Ayarli degil</span>
-            <span style="font-size:0.58rem;color:var(--success);font-weight:600;text-transform:uppercase;letter-spacing:.04em">EN HIZLI</span>
-          </div>
-          <input class="setting-input" id="colab-url" type="text"
-            placeholder="https://xxxx-xx-xx-xx-xx.ngrok-free.app" autocomplete="off" spellcheck="false">
-          <div class="setting-hint">
-            <code>colab_whisper.ipynb</code> notebook'unu Google Colab'da ac (T4 GPU), calistir ve URL'yi buraya yaz.
-            Aktifken Colab GPU kullanilir &mdash; 250 dk video ~5-8 dk transkripsiyon.
           </div>
         </div>
 
@@ -657,6 +708,13 @@
     let dubEnabled = false;
     let cardData = [];
 
+    document.addEventListener('DOMContentLoaded', () => {
+      const srcLang = document.getElementById('srcLang');
+      const dubEngine = document.getElementById('dubEngine');
+      if (srcLang) srcLang.value = 'en';
+      if (dubEngine) dubEngine.value = 'fast';
+    });
+
     // --- Settings ---
     async function openSettings() {
       document.getElementById('settingsOverlay').classList.add('open');
@@ -669,6 +727,8 @@
         const colabSet = data.COLAB_URL?.set;
         const orModel = data.OPENROUTER_MODEL?.set ? data.OPENROUTER_MODEL.masked : '';
         const colabUrl = data.COLAB_URL?.set ? data.COLAB_URL.masked : '';
+        const lipsyncSet = data.LIPSYNC_URL?.set;
+        const lipsyncUrl = lipsyncSet ? data.LIPSYNC_URL.masked : '';
 
         const groqBadge = document.getElementById('groq-badge');
         groqBadge.textContent = groqSet ? 'Ayarli' : 'Ayarli degil';
@@ -686,6 +746,11 @@
         document.getElementById('or-key').placeholder   = orSet   ? '(degistirmek icin yaz)' : 'sk-or-...';
         document.getElementById('or-model').value = orModel;
         document.getElementById('colab-url').value = colabUrl;
+
+        const lipsyncBadge = document.getElementById('lipsync-badge');
+        lipsyncBadge.textContent = lipsyncSet ? 'Ayarli' : 'Ayarli degil';
+        lipsyncBadge.className = 'setting-badge ' + (lipsyncSet ? 'ok' : 'missing');
+        document.getElementById('lipsync-url').value = lipsyncUrl;
       } catch (_) {}
     }
 
@@ -694,6 +759,7 @@
       document.getElementById('groq-key').value = '';
       document.getElementById('or-key').value   = '';
       document.getElementById('colab-url').value = '';
+      document.getElementById('lipsync-url').value = '';
     }
 
     function closeOnBackdrop(e) {
@@ -711,6 +777,7 @@
           body: JSON.stringify({
             GROQ_API_KEY:       document.getElementById('groq-key').value.trim(),
             COLAB_URL:          document.getElementById('colab-url').value.trim(),
+            LIPSYNC_URL:        document.getElementById('lipsync-url').value.trim(),
             OPENROUTER_API_KEY: document.getElementById('or-key').value.trim(),
             OPENROUTER_MODEL:   document.getElementById('or-model').value.trim(),
           }),
@@ -758,6 +825,15 @@
       return `${m}:${sec.toString().padStart(2, '0')}`;
     }
 
+    function fmtElapsed(s) {
+      const total = Math.max(0, Math.floor(s || 0));
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      const sec = total % 60;
+      if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+      return `${m}:${sec.toString().padStart(2, '0')}`;
+    }
+
     function esc(s) {
       const d = document.createElement('div');
       d.textContent = s;
@@ -765,8 +841,12 @@
     }
 
     function canDubCard(c) {
-      const name = (c.filename || '').toLowerCase();
-      return !!c.jobId && (name.endsWith('.mp4') || currentFormat === 'video');
+      return !!c.jobId && (c.requestFormat === 'video' || c.format === 'video');
+    }
+
+    function setCardDubEngine(idx, value) {
+      if (!cardData[idx]) return;
+      cardData[idx].cardDubEngine = value;
     }
 
     function friendlyError(err) {
@@ -900,22 +980,42 @@
       }
 
       let actionHtml = '';
+      const phaseText = c.phaseMessage || '';
+      const progressText = (c.progressPercent != null && c.status !== 'done' && c.status !== 'ready')
+        ? ` %${Math.round(c.progressPercent)}`
+        : '';
       if (c.status === 'ready') {
         actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Download</button>${qualityChips}`;
       } else if (c.status === 'downloading') {
-        actionHtml = `<span class="card-status downloading"><span class="spin"></span> Downloading...</span>`;
+        actionHtml = `<span class="card-status downloading"><span class="spin"></span> ${esc(phaseText || 'Downloading...')}${progressText}</span>`;
       } else if (c.status === 'dubbing') {
         actionHtml = `<span class="card-status downloading"><span class="spin"></span> TR Dublaj yapılıyor (2-5 dk)...</span>`;
       } else if (c.status === 'done') {
+        const selectedEngine = c.cardDubEngine || document.getElementById('dubEngine').value || 'fast';
+        const engineSelect = canDubCard(c)
+          ? `<select class="card-engine-select" onchange="setCardDubEngine(${idx}, this.value)">
+              <option value="fast" ${selectedEngine === 'fast' ? 'selected' : ''}>Hızlı (edge-tts)</option>
+              <option value="krillin_deepseek" ${selectedEngine === 'krillin_deepseek' ? 'selected' : ''}>KrillinAI + DeepSeek</option>
+              <option value="krillin_ollama" ${selectedEngine === 'krillin_ollama' ? 'selected' : ''}>KrillinAI + Ollama</option>
+            </select>`
+          : '';
         const dubBtn = canDubCard(c)
           ? `<button class="card-dl-btn" onclick="addDub(${idx})">Dublaj Ekle</button>`
           : '';
-        actionHtml = `<button class="card-dl-btn done" onclick="saveCard(${idx})">Save</button>${dubBtn}
+        actionHtml = `<button class="card-dl-btn done" onclick="saveCard(${idx})">Save</button>${engineSelect}${dubBtn}
           <span class="card-status done">${esc(c.filename || '')}</span>`;
       } else if (c.status === 'error') {
         actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Retry</button>
           <span class="card-status error">${esc(friendlyError(c.error || 'Download failed'))}</span>`;
       }
+
+      const timingHtml = c.elapsedSec != null && (c.status === 'downloading' || c.status === 'dubbing' || c.status === 'done')
+        ? `<div class="card-timing">Sure: ${fmtElapsed(c.elapsedSec)}${phaseText ? ` · ${esc(phaseText)}${progressText}` : ''}</div>`
+        : '';
+
+      const previewHtml = (c.status === 'done' && canDubCard(c))
+        ? `<div class="card-preview"><video controls preload="metadata" src="/api/media/${c.jobId}"></video></div>`
+        : '';
 
       el.innerHTML = `
         <div class="card-thumb">${thumbHtml}</div>
@@ -923,6 +1023,8 @@
           <div class="card-title">${esc(c.title || 'Untitled')}</div>
           <div class="card-meta">${esc(c.uploader)}${c.duration ? ' · ' + fmtDur(c.duration) : ''}</div>
           <div class="card-actions">${actionHtml}</div>
+          ${timingHtml}
+          ${previewHtml}
         </div>
       `;
     }
@@ -947,6 +1049,9 @@
       const c = cardData[idx];
       c.status = 'downloading';
       c.error = null;
+      c.phaseMessage = 'Indirme hazirlaniyor';
+      c.progressPercent = 0;
+      c.elapsedSec = 0;
       renderCard(idx);
 
       try {
@@ -972,6 +1077,8 @@
           return;
         }
         c.jobId = data.job_id;
+        c.requestFormat = currentFormat;
+        c.elapsedSec = 0;
         pollCard(idx);
       } catch (err) {
         c.status = 'error';
@@ -986,10 +1093,21 @@
         try {
           const res = await fetch(`/api/status/${c.jobId}`);
           const data = await res.json();
+          if (!res.ok || data.error) {
+            clearInterval(iv);
+            c.status = 'error';
+            c.error = data.error || `Status sorgusu basarisiz (${res.status})`;
+            renderCard(idx);
+            return;
+          }
+          c.phaseMessage = data.phase_message || '';
+          c.progressPercent = data.progress_percent;
+          c.elapsedSec = data.elapsed_sec;
           if (data.status === 'done') {
             clearInterval(iv);
             c.status = 'done';
             c.filename = data.filename;
+            c.format = data.format;
             renderCard(idx);
           } else if (data.status === 'dubbing') {
             if (c.status !== 'dubbing') { c.status = 'dubbing'; renderCard(idx); }
@@ -1014,14 +1132,18 @@
 
       c.status = 'dubbing';
       c.error = null;
+      c.phaseMessage = 'Dublaj hazirlaniyor';
+      c.progressPercent = 0;
+      c.elapsedSec = 0;
       renderCard(idx);
 
       try {
+        const selectedEngine = c.cardDubEngine || document.getElementById('dubEngine').value || 'fast';
         const res = await fetch(`/api/dub/${c.jobId}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            dub_engine: document.getElementById('dubEngine').value,
+            dub_engine: selectedEngine,
             src_lang: document.getElementById('srcLang').value,
             tgt_lang: document.getElementById('tgtLang').value,
           }),

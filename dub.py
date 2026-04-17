@@ -15,6 +15,7 @@ import asyncio
 import os
 import subprocess
 import tempfile
+from collections.abc import Callable
 
 import edge_tts
 from deep_translator import GoogleTranslator
@@ -372,7 +373,8 @@ def _build_dub_track(valid: list[tuple[float, str]], workdir: str, out_wav: str)
 # ---------------------------------------------------------------------------
 
 def dub_video(video_path: str, out_path: str, keep_original_volume: float = 0.15,
-              src_lang: str = "auto", tgt_lang: str = "tr") -> None:
+              src_lang: str = "auto", tgt_lang: str = "tr",
+              on_progress: Callable[[float, str], None] | None = None) -> None:
     """
     Video dublaj - engine secimi otomatik:
       COLAB_URL           -> Colab GPU Whisper (en hizli, en iyi kalite)
@@ -386,9 +388,13 @@ def dub_video(video_path: str, out_path: str, keep_original_volume: float = 0.15
 
     with tempfile.TemporaryDirectory() as tmp:
         wav = os.path.join(tmp, "src.wav")
+        if on_progress:
+            on_progress(8, "Ses cikariliyor")
         _extract_audio(video_path, wav)
 
         # --- Transkripsiyon (oncelik: Colab > Groq > Local) ---
+        if on_progress:
+            on_progress(22, "Transkripsiyon yapiliyor")
         if use_colab:
             segments, detected_lang = _transcribe_colab(wav, src_lang)
         elif use_groq:
@@ -403,15 +409,21 @@ def dub_video(video_path: str, out_path: str, keep_original_volume: float = 0.15
 
         # --- Ceviri ---
         if source != tgt_lang:
+            if on_progress:
+                on_progress(48, "Ceviri yapiliyor")
             if use_openrouter:
                 segments = _translate_openrouter(segments, source, tgt_lang)
             else:
                 segments = _translate_google(segments, source, tgt_lang)
 
         # --- TTS ---
+        if on_progress:
+            on_progress(68, "Seslendirme uretiliyor")
         asyncio.run(_tts_all(segments, voice, tmp))
 
         # --- Hiz ayarla + gecerli segmentleri topla ---
+        if on_progress:
+            on_progress(82, "Parcalar hazirlaniyor")
         valid: list[tuple[float, str]] = []
         for idx, (start, end, _) in enumerate(segments):
             mp3 = os.path.join(tmp, f"seg_{idx}.mp3")
@@ -426,17 +438,30 @@ def dub_video(video_path: str, out_path: str, keep_original_volume: float = 0.15
         valid.sort(key=lambda x: x[0])
 
         dub_wav = os.path.join(tmp, "dub.wav")
+        if on_progress:
+            on_progress(90, "Ses parcasi birlestiriliyor")
         _build_dub_track(valid, tmp, dub_wav)
 
         # --- Final mix ---
-        subprocess.run([
-            "ffmpeg", "-y",
-            "-i", video_path,
-            "-i", dub_wav,
-            "-filter_complex",
-            f"[0:a]volume={keep_original_volume}[a0];[a0][1:a]amix=inputs=2:duration=first:dropout_transition=0[aout]",
-            "-map", "0:v", "-map", "[aout]",
-            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-            "-shortest",
-            out_path,
-        ], check=True, capture_output=True)
+        if os.environ.get("LIPSYNC_URL"):
+            if on_progress:
+                on_progress(94, "Lip-sync Colab'a gonderiliyor")
+            from lipsync_client import lipsync_video
+
+            lipsync_video(video_path, dub_wav, out_path, on_progress=on_progress)
+        else:
+            if on_progress:
+                on_progress(96, "Video final hale getiriliyor")
+            subprocess.run([
+                "ffmpeg", "-y",
+                "-i", video_path,
+                "-i", dub_wav,
+                "-filter_complex",
+                f"[0:a]volume={keep_original_volume}[a0];[a0][1:a]amix=inputs=2:duration=first:dropout_transition=0[aout]",
+                "-map", "0:v", "-map", "[aout]",
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                "-shortest",
+                out_path,
+            ], check=True, capture_output=True)
+        if on_progress:
+            on_progress(100, "Dublaj tamamlandi")
