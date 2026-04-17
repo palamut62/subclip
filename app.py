@@ -531,17 +531,25 @@ def check_status(job_id):
 def list_jobs():
     out = []
     for jid, job in jobs.items():
-        if job.get("status") != "done":
-            continue
         f = job.get("file", "")
+        if not f:
+            candidates = glob.glob(os.path.join(DOWNLOAD_DIR, f"{jid}*.mp4")) + \
+                         glob.glob(os.path.join(DOWNLOAD_DIR, f"{jid}*.mp3"))
+            if candidates:
+                f = max(candidates, key=os.path.getmtime)
+                job["file"] = f
+                if not job.get("filename"):
+                    job["filename"] = os.path.basename(f)
         if not f or not os.path.exists(f):
             continue
         out.append({
             "job_id": jid,
             "title": job.get("title", ""),
-            "filename": job.get("filename", ""),
+            "filename": job.get("filename") or os.path.basename(f),
             "format": job.get("format", ""),
             "stage": job.get("stage", ""),
+            "status": job.get("status", ""),
+            "error": job.get("error", ""),
             "url": job.get("url", ""),
             "created_at": job.get("created_at", 0),
         })
@@ -568,18 +576,24 @@ def delete_job(job_id):
 @app.route("/api/file/<job_id>")
 def download_file(job_id):
     job = jobs.get(job_id)
-    if not job or job["status"] != "done":
+    if not job:
         return jsonify({"error": "File not ready"}), 404
-    return send_file(job["file"], as_attachment=True, download_name=job["filename"])
+    f = job.get("file", "")
+    if not f or not os.path.exists(f):
+        return jsonify({"error": "File not ready"}), 404
+    return send_file(f, as_attachment=True, download_name=job.get("filename") or os.path.basename(f))
 
 
 @app.route("/api/media/<job_id>")
 def stream_media(job_id):
     job = jobs.get(job_id)
-    if not job or job["status"] != "done":
+    if not job:
         return jsonify({"error": "File not ready"}), 404
-    mime, _ = mimetypes.guess_type(job["file"])
-    return send_file(job["file"], as_attachment=False, mimetype=mime or "application/octet-stream")
+    f = job.get("file", "")
+    if not f or not os.path.exists(f):
+        return jsonify({"error": "File not ready"}), 404
+    mime, _ = mimetypes.guess_type(f)
+    return send_file(f, as_attachment=False, mimetype=mime or "application/octet-stream")
 
 
 if __name__ == "__main__":
