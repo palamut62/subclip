@@ -874,8 +874,8 @@
       const container = document.getElementById('cards');
       btn.disabled = true;
       btn.textContent = 'Loading...';
-      container.innerHTML = '';
-      cardData = [];
+      cardData = cardData.filter(c => c.fromHistory);
+      rerenderAll();
 
       for (let i = 0; i < urls.length; i++) {
         const url = urls[i];
@@ -1003,6 +1003,7 @@
           ? `<button class="card-dl-btn" onclick="addDub(${idx})">Dublaj Ekle</button>`
           : '';
         actionHtml = `<button class="card-dl-btn done" onclick="saveCard(${idx})">Save</button>${engineSelect}${dubBtn}
+          <button class="card-dl-btn" style="background:transparent;color:var(--error);border:1px solid var(--error)" onclick="deleteCard(${idx})">Sil</button>
           <span class="card-status done">${esc(c.filename || '')}</span>`;
       } else if (c.status === 'error') {
         actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Retry</button>
@@ -1108,6 +1109,7 @@
             c.status = 'done';
             c.filename = data.filename;
             c.format = data.format;
+            c.fromHistory = true;
             renderCard(idx);
           } else if (data.status === 'dubbing') {
             if (c.status !== 'dubbing') { c.status = 'dubbing'; renderCard(idx); }
@@ -1171,6 +1173,49 @@
       a.download = c.filename || '';
       a.click();
     }
+
+    async function deleteCard(idx) {
+      const c = cardData[idx];
+      if (!c.jobId) {
+        cardData.splice(idx, 1);
+        rerenderAll();
+        return;
+      }
+      if (!confirm('Bu video silinsin mi?')) return;
+      try {
+        await fetch(`/api/jobs/${c.jobId}`, { method: 'DELETE' });
+      } catch (_) {}
+      cardData.splice(idx, 1);
+      rerenderAll();
+    }
+
+    function rerenderAll() {
+      document.getElementById('cards').innerHTML = '';
+      cardData.forEach((_, i) => renderCard(i));
+    }
+
+    async function loadHistory() {
+      try {
+        const res = await fetch('/api/jobs');
+        const list = await res.json();
+        if (!Array.isArray(list) || !list.length) return;
+        for (const j of list) {
+          cardData.push({
+            url: j.url || '',
+            status: 'done',
+            title: j.title || j.filename || '',
+            filename: j.filename,
+            jobId: j.job_id,
+            format: j.format,
+            requestFormat: j.format,
+            fromHistory: true,
+          });
+          renderCard(cardData.length - 1);
+        }
+      } catch (_) {}
+    }
+
+    document.addEventListener('DOMContentLoaded', loadHistory);
 
     async function dlAll() {
       const btn = document.querySelector('.dl-all-btn');

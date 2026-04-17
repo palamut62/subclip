@@ -380,13 +380,25 @@ def save_settings():
     data = request.json or {}
     to_save = {}
     for k in _MANAGED_KEYS:
+        if k not in data:
+            continue
         v = data.get(k, "").strip()
-        if v and "*" not in v:
-            to_save[k] = v
-        elif not v:
-            to_save[k] = ""
-    _write_env(to_save)
-    _apply_env(to_save)
+        if not v or "*" in v:
+            continue
+        to_save[k] = v
+    if to_save:
+        _write_env(to_save)
+        _apply_env(to_save)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/settings/<key>", methods=["DELETE"])
+def clear_setting(key):
+    if key not in _MANAGED_KEYS:
+        return jsonify({"error": "unknown key"}), 400
+    _write_env({key: ""})
+    if key in os.environ:
+        del os.environ[key]
     return jsonify({"ok": True})
 
 
@@ -513,6 +525,44 @@ def check_status(job_id):
         "updated_at": job.get("updated_at"),
         "elapsed_sec": _elapsed_seconds(job),
     })
+
+
+@app.route("/api/jobs")
+def list_jobs():
+    out = []
+    for jid, job in jobs.items():
+        if job.get("status") != "done":
+            continue
+        f = job.get("file", "")
+        if not f or not os.path.exists(f):
+            continue
+        out.append({
+            "job_id": jid,
+            "title": job.get("title", ""),
+            "filename": job.get("filename", ""),
+            "format": job.get("format", ""),
+            "stage": job.get("stage", ""),
+            "url": job.get("url", ""),
+            "created_at": job.get("created_at", 0),
+        })
+    out.sort(key=lambda j: j["created_at"], reverse=True)
+    return jsonify(out)
+
+
+@app.route("/api/jobs/<job_id>", methods=["DELETE"])
+def delete_job(job_id):
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    f = job.get("file", "")
+    if f and os.path.exists(f):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+    jobs.pop(job_id, None)
+    _save_jobs()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/file/<job_id>")
