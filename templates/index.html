@@ -696,6 +696,17 @@
 
     <div id="cards" class="cards"></div>
 
+    <div class="modal-overlay" id="dialogOverlay">
+      <div class="modal" style="width:min(380px,calc(100vw - 32px))">
+        <div class="modal-title" id="dialogTitle">Onay</div>
+        <div class="modal-sub" id="dialogMessage" style="white-space:pre-wrap;word-break:break-word;margin-bottom:18px"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button id="dialogCancel" class="card-dl-btn" style="background:transparent;color:var(--muted);border:1px solid var(--card-border)">Iptal</button>
+          <button id="dialogConfirm" class="card-dl-btn">Tamam</button>
+        </div>
+      </div>
+    </div>
+
     <div class="footer">
       YouTube &middot; TikTok &middot; Instagram &middot; Twitter/X &middot; Reddit &middot; Facebook<br>
       Vimeo &middot; Twitch &middot; Dailymotion &middot; SoundCloud &middot; Loom &middot; Streamable<br>
@@ -707,6 +718,48 @@
     let currentFormat = 'video';
     let dubEnabled = false;
     let cardData = [];
+
+    function showDialog({ title = 'Onay', message = '', confirmText = 'Tamam', cancelText = 'Iptal', variant = 'info' } = {}) {
+      return new Promise((resolve) => {
+        const overlay = document.getElementById('dialogOverlay');
+        const titleEl = document.getElementById('dialogTitle');
+        const msgEl = document.getElementById('dialogMessage');
+        const confirmBtn = document.getElementById('dialogConfirm');
+        const cancelBtn = document.getElementById('dialogCancel');
+
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+        confirmBtn.textContent = confirmText;
+        cancelBtn.textContent = cancelText;
+        cancelBtn.style.display = cancelText ? '' : 'none';
+        confirmBtn.style.background = variant === 'danger' ? 'var(--error)' : '';
+        confirmBtn.style.color = variant === 'danger' ? '#fff' : '';
+
+        overlay.classList.add('open');
+        confirmBtn.focus();
+
+        const close = (val) => {
+          overlay.classList.remove('open');
+          confirmBtn.onclick = null;
+          cancelBtn.onclick = null;
+          overlay.onclick = null;
+          document.removeEventListener('keydown', onKey);
+          resolve(val);
+        };
+        const onKey = (e) => {
+          if (e.key === 'Escape') close(false);
+          else if (e.key === 'Enter') close(true);
+        };
+        confirmBtn.onclick = () => close(true);
+        cancelBtn.onclick = () => close(false);
+        overlay.onclick = (e) => { if (e.target === overlay) close(false); };
+        document.addEventListener('keydown', onKey);
+      });
+    }
+
+    function showAlert(message, title = 'Bilgi') {
+      return showDialog({ title, message, confirmText: 'Tamam', cancelText: '' });
+    }
 
     document.addEventListener('DOMContentLoaded', () => {
       const srcLang = document.getElementById('srcLang');
@@ -784,7 +837,7 @@
         });
         closeSettings();
       } catch (_) {
-        alert('Kaydetme hatasi');
+        showAlert('Kaydetme hatasi', 'Hata');
       } finally {
         btn.disabled = false;
         btn.textContent = 'Kaydet';
@@ -1204,7 +1257,14 @@
         rerenderAll();
         return;
       }
-      if (!confirm('Bu video silinsin mi?')) return;
+      const ok = await showDialog({
+        title: 'Videoyu sil',
+        message: (c.filename || c.title || 'Bu video') + ' silinsin mi?',
+        confirmText: 'Sil',
+        cancelText: 'Vazgec',
+        variant: 'danger',
+      });
+      if (!ok) return;
       try {
         await fetch(`/api/jobs/${c.jobId}`, { method: 'DELETE' });
       } catch (_) {}
