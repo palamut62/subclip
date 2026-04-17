@@ -1,3 +1,8 @@
-﻿flask
+flask
 yt-dlp
 openai
+edge-tts
+faster-whisper
+deep-translator
+requests
+librosa

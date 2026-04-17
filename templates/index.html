@@ -697,6 +697,21 @@
         <option value="male">Erkek</option>
         <option value="child">Cocuk</option>
       </select>
+      <label style="display:flex;align-items:center;gap:4px;color:#ddd;font-size:13px;cursor:pointer" title="Birden fazla konusmaci varsa her birine ayri ses ata (Colab GPU gerekli)">
+        <input type="checkbox" id="multiSpeaker"> Coklu konusmaci
+      </label>
+    </div>
+
+    <div class="modal-overlay" id="voicesOverlay">
+      <div class="modal" style="width:min(520px,calc(100vw - 32px))">
+        <div class="modal-title">Konusmaci Ses Atamasi</div>
+        <div class="modal-sub" id="voicesSub" style="margin-bottom:14px">Algilanan konusmacilar icin ses sec:</div>
+        <div id="voicesList"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+          <button id="voicesCancel" class="card-dl-btn" style="background:transparent;color:var(--muted);border:1px solid var(--card-border)">Iptal</button>
+          <button id="voicesConfirm" class="card-dl-btn">Dublaji baslat</button>
+        </div>
+      </div>
     </div>
 
     <div id="cards" class="cards"></div>
@@ -1073,6 +1088,9 @@
         const msg = phaseText || 'Dublaj yapiliyor';
         const pct = (c.progressPercent != null) ? ` %${Math.round(c.progressPercent)}` : '';
         actionHtml = `<span class="card-status downloading"><span class="spin"></span> ${esc(msg)}${pct}</span>`;
+      } else if (c.status === 'awaiting_voices') {
+        actionHtml = `<button class="card-dl-btn" onclick="openVoicesModal(${idx})">Konusmaci atamasi</button>
+          <span class="card-status downloading">${(c.speakers || []).length} konusmaci bekliyor</span>`;
       } else if (c.status === 'done') {
         const selectedEngine = c.cardDubEngine || document.getElementById('dubEngine').value || 'fast';
         const engineSelect = canDubCard(c)
@@ -1152,6 +1170,7 @@
             src_lang: dubEnabled ? document.getElementById('srcLang').value : 'auto',
             tgt_lang: dubEnabled ? document.getElementById('tgtLang').value : 'tr',
             gender: dubEnabled ? document.getElementById('tgtGender').value : 'female',
+            multi_speaker: dubEnabled ? document.getElementById('multiSpeaker').checked : false,
             title: c.title || '',
           }),
         });
@@ -1198,6 +1217,12 @@
             renderCard(idx);
           } else if (data.status === 'dubbing') {
             if (c.status !== 'dubbing') { c.status = 'dubbing'; renderCard(idx); }
+          } else if (data.status === 'awaiting_voices') {
+            clearInterval(iv);
+            c.status = 'awaiting_voices';
+            c.speakers = data.speakers || [];
+            renderCard(idx);
+            openVoicesModal(idx);
           } else if (data.status === 'error') {
             clearInterval(iv);
             c.status = 'error';
@@ -1285,6 +1310,60 @@
     function rerenderAll() {
       document.getElementById('cards').innerHTML = '';
       cardData.forEach((_, i) => renderCard(i));
+    }
+
+    function openVoicesModal(idx) {
+      const c = cardData[idx];
+      const speakers = c.speakers || [];
+      const overlay = document.getElementById('voicesOverlay');
+      const list = document.getElementById('voicesList');
+      const sub = document.getElementById('voicesSub');
+      sub.textContent = `${speakers.length} konusmaci algilandi. Her biri icin ses cinsiyeti sec:`;
+      list.innerHTML = speakers.map((s, i) => {
+        const guess = s.gender_guess || 'female';
+        const pitchLabel = s.pitch_hz ? `~${s.pitch_hz} Hz` : 'pitch yok';
+        return `
+          <div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--card-border);border-radius:8px;margin-bottom:8px">
+            <div style="flex:1">
+              <div style="font-weight:600">${esc(s.id)}</div>
+              <div style="font-size:12px;color:var(--muted)">${s.segment_count} segment | ${s.total_seconds}s | ${pitchLabel}</div>
+            </div>
+            <select data-spk="${esc(s.id)}" class="voice-sel" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px 8px;font-size:13px;">
+              <option value="female" ${guess==='female'?'selected':''}>Kadin</option>
+              <option value="male" ${guess==='male'?'selected':''}>Erkek</option>
+              <option value="child" ${guess==='child'?'selected':''}>Cocuk</option>
+            </select>
+          </div>`;
+      }).join('');
+      overlay.classList.add('open');
+
+      const confirmBtn = document.getElementById('voicesConfirm');
+      const cancelBtn = document.getElementById('voicesCancel');
+      confirmBtn.onclick = async () => {
+        const voices = {};
+        list.querySelectorAll('.voice-sel').forEach(sel => {
+          voices[sel.dataset.spk] = sel.value;
+        });
+        overlay.classList.remove('open');
+        c.status = 'dubbing';
+        c.phaseMessage = 'Dublaj devam ediyor';
+        renderCard(idx);
+        try {
+          await fetch(`/api/assign-voices/${c.jobId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ voices }),
+          });
+          pollCard(idx);
+        } catch (e) {
+          c.status = 'error';
+          c.error = e.message;
+          renderCard(idx);
+        }
+      };
+      cancelBtn.onclick = () => {
+        overlay.classList.remove('open');
+      };
     }
 
     async function loadHistory() {

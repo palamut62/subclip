@@ -493,6 +493,7 @@ def start_download():
     src_lang = data.get("src_lang", "en")
     tgt_lang = data.get("tgt_lang", "tr")
     gender = data.get("gender", "female")
+    multi_speaker = bool(data.get("multi_speaker"))
 
     if not url:
         return jsonify({"error": "No URL provided"}), 400
@@ -515,7 +516,7 @@ def start_download():
 
     thread = threading.Thread(
         target=run_download,
-        args=(job_id, url, format_choice, format_id, dub, dub_engine, src_lang, tgt_lang, gender),
+        args=(job_id, url, format_choice, format_id, dub, dub_engine, src_lang, tgt_lang, gender, multi_speaker),
     )
     thread.daemon = True
     thread.start()
@@ -562,6 +563,7 @@ def check_status(job_id):
         "error": job.get("error"),
         "filename": job.get("filename"),
         "format": job.get("format"),
+        "speakers": job.get("speakers") if job.get("status") == "awaiting_voices" else None,
         "started_at": job.get("started_at"),
         "updated_at": job.get("updated_at"),
         "elapsed_sec": _elapsed_seconds(job),
