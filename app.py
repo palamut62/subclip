@@ -213,7 +213,7 @@ def _finalize_filename(job: dict, chosen: str, suffix: str = "") -> None:
 
 def run_download(job_id: str, url: str, format_choice: str, format_id: str | None,
                  dub: bool = False, dub_engine: str = "fast", src_lang: str = "en",
-                 tgt_lang: str = "tr") -> None:
+                 tgt_lang: str = "tr", gender: str = "female") -> None:
     job = jobs[job_id]
     out_template = os.path.join(DOWNLOAD_DIR, f"{job_id}.%(ext)s")
 
@@ -244,6 +244,7 @@ def run_download(job_id: str, url: str, format_choice: str, format_id: str | Non
                         origin_lang=src_lang,
                         target_lang=tgt_lang,
                         llm=llm,
+                        gender=gender,
                         on_progress=lambda p: _update_job(
                             job,
                             status="dubbing",
@@ -260,6 +261,7 @@ def run_download(job_id: str, url: str, format_choice: str, format_id: str | Non
                         dubbed_path,
                         src_lang=src_lang,
                         tgt_lang=tgt_lang,
+                        gender=gender,
                         on_progress=lambda p, msg: _update_job(
                             job,
                             status="dubbing",
@@ -285,7 +287,7 @@ def run_download(job_id: str, url: str, format_choice: str, format_id: str | Non
         _update_job(job, status="error", stage="error", error=str(e))
 
 
-def run_dub_existing(job_id: str, dub_engine: str = "fast", src_lang: str = "en", tgt_lang: str = "tr") -> None:
+def run_dub_existing(job_id: str, dub_engine: str = "fast", src_lang: str = "en", tgt_lang: str = "tr", gender: str = "female") -> None:
     job = jobs[job_id]
     src_path = job.get("file", "")
     if not src_path or not os.path.exists(src_path):
@@ -323,6 +325,7 @@ def run_dub_existing(job_id: str, dub_engine: str = "fast", src_lang: str = "en"
                 origin_lang=src_lang,
                 target_lang=tgt_lang,
                 llm=llm,
+                gender=gender,
                 on_progress=lambda p: _update_job(
                     job,
                     status="dubbing",
@@ -339,6 +342,7 @@ def run_dub_existing(job_id: str, dub_engine: str = "fast", src_lang: str = "en"
                 dubbed_path,
                 src_lang=src_lang,
                 tgt_lang=tgt_lang,
+                gender=gender,
                 on_progress=lambda p, msg: _update_job(
                     job,
                     status="dubbing",
@@ -453,6 +457,7 @@ def start_download():
     dub_engine = data.get("dub_engine", "fast")
     src_lang = data.get("src_lang", "en")
     tgt_lang = data.get("tgt_lang", "tr")
+    gender = data.get("gender", "female")
 
     if not url:
         return jsonify({"error": "No URL provided"}), 400
@@ -475,7 +480,7 @@ def start_download():
 
     thread = threading.Thread(
         target=run_download,
-        args=(job_id, url, format_choice, format_id, dub, dub_engine, src_lang, tgt_lang),
+        args=(job_id, url, format_choice, format_id, dub, dub_engine, src_lang, tgt_lang, gender),
     )
     thread.daemon = True
     thread.start()
@@ -497,12 +502,13 @@ def dub_existing_file(job_id):
     dub_engine = data.get("dub_engine", "fast")
     src_lang = data.get("src_lang", "en")
     tgt_lang = data.get("tgt_lang", "tr")
+    gender = data.get("gender", "female")
 
     now = _now_ts()
     job["started_at"] = now
     job["updated_at"] = now
     _save_jobs()
-    thread = threading.Thread(target=run_dub_existing, args=(job_id, dub_engine, src_lang, tgt_lang))
+    thread = threading.Thread(target=run_dub_existing, args=(job_id, dub_engine, src_lang, tgt_lang, gender))
     thread.daemon = True
     thread.start()
     return jsonify({"job_id": job_id})

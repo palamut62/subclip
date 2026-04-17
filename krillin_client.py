@@ -258,8 +258,12 @@ def start_task(server_url: str, origin_lang: str = "en", target_lang: str = "tr"
     return data["data"]["task_id"]
 
 
+_STEP_PERCENTS = {0: 5, 1: 15, 2: 35, 3: 55, 4: 85, 5: 95, 6: 99}
+
+
 def poll_task(task_id: str, on_progress=None, timeout_sec: int = 1800) -> dict:
     deadline = time.time() + timeout_sec
+    last_reported = -1.0
     while time.time() < deadline:
         r = requests.get(f"{BASE}/api/capability/subtitleTask", params={"taskId": task_id}, timeout=30)
         r.raise_for_status()
@@ -269,9 +273,16 @@ def poll_task(task_id: str, on_progress=None, timeout_sec: int = 1800) -> dict:
         d = data.get("data") or {}
         if _is_failed_state(d):
             raise RuntimeError(f"Task basarisiz: {_extract_error_message(data)}{_latest_log_hint()}")
-        if on_progress:
-            on_progress(d.get("process_percent", 0))
-        if d.get("process_percent", 0) >= 100 and d.get("speech_download_url"):
+
+        pct = float(d.get("process_percent") or 0)
+        step = int(d.get("last_success_step_num") or 0)
+        synth = _STEP_PERCENTS.get(step, min(95, step * 15))
+        pct = max(pct, synth)
+        if on_progress and pct > last_reported:
+            on_progress(pct)
+            last_reported = pct
+
+        if (d.get("process_percent") or 0) >= 100 and d.get("speech_download_url"):
             return d
         time.sleep(3)
     raise TimeoutError("KrillinAI task zaman asimi")
@@ -286,13 +297,15 @@ def download_result(speech_url: str, out_path: str) -> None:
 
 
 def dub_video(video_path: str, out_path: str, origin_lang: str = "auto", target_lang: str = "tr",
-              on_progress=None, llm: str = "deepseek") -> None:
+              on_progress=None, llm: str = "deepseek", gender: str = "female") -> None:
     ensure_server(llm)
     if origin_lang == "auto":
         origin_lang = _detect_source_lang(video_path)
 
     server_url = upload_file(video_path)
-    voices = VOICE_MAP.get(target_lang, ["tr-TR-EmelNeural"])
+    all_voices = VOICE_MAP.get(target_lang, ["tr-TR-EmelNeural", "tr-TR-AhmetNeural"])
+    primary_idx = 1 if gender == "male" else 0
+    voices = [all_voices[primary_idx]] + [v for i, v in enumerate(all_voices) if i != primary_idx]
     last_err = None
     for voice in voices:
         try:

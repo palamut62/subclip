@@ -692,6 +692,11 @@
         <option value="zh">Çince</option>
         <option value="pt">Portekizce</option>
       </select>
+      <select id="tgtGender" title="Ses cinsiyeti" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px 8px;font-size:13px;">
+        <option value="female">Kadin</option>
+        <option value="male">Erkek</option>
+        <option value="child">Cocuk</option>
+      </select>
     </div>
 
     <div id="cards" class="cards"></div>
@@ -1064,7 +1069,9 @@
       } else if (c.status === 'downloading') {
         actionHtml = `<span class="card-status downloading"><span class="spin"></span> ${esc(phaseText || 'Downloading...')}${progressText}</span>`;
       } else if (c.status === 'dubbing') {
-        actionHtml = `<span class="card-status downloading"><span class="spin"></span> TR Dublaj yapılıyor (2-5 dk)...</span>`;
+        const msg = phaseText || 'Dublaj yapiliyor';
+        const pct = (c.progressPercent != null) ? ` %${Math.round(c.progressPercent)}` : '';
+        actionHtml = `<span class="card-status downloading"><span class="spin"></span> ${esc(msg)}${pct}</span>`;
       } else if (c.status === 'done') {
         const selectedEngine = c.cardDubEngine || document.getElementById('dubEngine').value || 'fast';
         const engineSelect = canDubCard(c)
@@ -1143,6 +1150,7 @@
             dub_engine: dubEnabled ? document.getElementById('dubEngine').value : 'fast',
             src_lang: dubEnabled ? document.getElementById('srcLang').value : 'auto',
             tgt_lang: dubEnabled ? document.getElementById('tgtLang').value : 'tr',
+            gender: dubEnabled ? document.getElementById('tgtGender').value : 'female',
             title: c.title || '',
           }),
         });
@@ -1224,6 +1232,7 @@
             dub_engine: selectedEngine,
             src_lang: document.getElementById('srcLang').value,
             tgt_lang: document.getElementById('tgtLang').value,
+            gender: document.getElementById('tgtGender').value,
           }),
         });
         const data = await res.json();

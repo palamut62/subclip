@@ -26,17 +26,17 @@ _GROQ_CHUNK_MIN = 20       # Groq'a gonderilecek chunk suresi (dakika)
 _TRANSLATE_BATCH = 80      # tek LLM / Google Translate cagrisindaki cumle sayisi
 
 VOICE_MAP = {
-    "tr": "tr-TR-EmelNeural",
-    "en": "en-US-JennyNeural",
-    "de": "de-DE-KatjaNeural",
-    "es": "es-ES-ElviraNeural",
-    "fr": "fr-FR-DeniseNeural",
-    "it": "it-IT-ElsaNeural",
-    "ru": "ru-RU-SvetlanaNeural",
-    "ar": "ar-SA-ZariyahNeural",
-    "ja": "ja-JP-NanamiNeural",
-    "zh": "zh-CN-XiaoxiaoNeural",
-    "pt": "pt-BR-FranciscaNeural",
+    "tr": {"female": "tr-TR-EmelNeural", "male": "tr-TR-AhmetNeural"},
+    "en": {"female": "en-US-JennyNeural", "male": "en-US-GuyNeural", "child": "en-US-AnaNeural"},
+    "de": {"female": "de-DE-KatjaNeural", "male": "de-DE-ConradNeural"},
+    "es": {"female": "es-ES-ElviraNeural", "male": "es-ES-AlvaroNeural"},
+    "fr": {"female": "fr-FR-DeniseNeural", "male": "fr-FR-HenriNeural"},
+    "it": {"female": "it-IT-ElsaNeural", "male": "it-IT-DiegoNeural"},
+    "ru": {"female": "ru-RU-SvetlanaNeural", "male": "ru-RU-DmitryNeural"},
+    "ar": {"female": "ar-SA-ZariyahNeural", "male": "ar-SA-HamedNeural"},
+    "ja": {"female": "ja-JP-NanamiNeural", "male": "ja-JP-KeitaNeural"},
+    "zh": {"female": "zh-CN-XiaoxiaoNeural", "male": "zh-CN-YunxiNeural", "child": "zh-CN-XiaoyiNeural"},
+    "pt": {"female": "pt-BR-FranciscaNeural", "male": "pt-BR-AntonioNeural"},
 }
 
 _LANG_NAMES = {
@@ -373,7 +373,7 @@ def _build_dub_track(valid: list[tuple[float, str]], workdir: str, out_wav: str)
 # ---------------------------------------------------------------------------
 
 def dub_video(video_path: str, out_path: str, keep_original_volume: float = 0.15,
-              src_lang: str = "auto", tgt_lang: str = "tr",
+              src_lang: str = "auto", tgt_lang: str = "tr", gender: str = "female",
               on_progress: Callable[[float, str], None] | None = None) -> None:
     """
     Video dublaj - engine secimi otomatik:
@@ -381,7 +381,8 @@ def dub_video(video_path: str, out_path: str, keep_original_volume: float = 0.15
       GROQ_API_KEY        -> Groq Whisper (hizli, kisa videolar icin iyi)
       OPENROUTER_API_KEY  -> OpenRouter LLM ceviri (kaliteli)
     """
-    voice = VOICE_MAP.get(tgt_lang, "tr-TR-EmelNeural")
+    lang_voices = VOICE_MAP.get(tgt_lang, {"female": "tr-TR-EmelNeural"})
+    voice = lang_voices.get(gender) or lang_voices.get("female") or next(iter(lang_voices.values()))
     use_colab = bool(os.environ.get("COLAB_URL"))
     use_groq = bool(os.environ.get("GROQ_API_KEY"))
     use_openrouter = bool(os.environ.get("OPENROUTER_API_KEY"))
