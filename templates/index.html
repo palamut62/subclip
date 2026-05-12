@@ -655,7 +655,6 @@
       <h1>Sub<em>Clip</em></h1>
       <p>Download videos and add subtitles.</p>
       <div id="keyStatusBar" style="margin-top:10px;display:flex;gap:14px;flex-wrap:wrap;font-size:0.78rem;color:var(--muted)">
-        <span id="ks-groq" style="display:flex;align-items:center;gap:6px"><span class="ks-dot" style="width:8px;height:8px;border-radius:50%;background:#c33"></span>Groq</span>
         <span id="ks-or" style="display:flex;align-items:center;gap:6px"><span class="ks-dot" style="width:8px;height:8px;border-radius:50%;background:#c33"></span>OpenRouter</span>
       </div>
       <button class="settings-btn" onclick="openSettings()" title="Settings">
@@ -670,25 +669,7 @@
     <div class="modal-overlay" id="settingsOverlay" onclick="closeOnBackdrop(event)">
       <div class="modal">
         <div class="modal-title">Settings</div>
-        <div class="modal-sub">No local GPU/Colab needed. Pipeline: Groq Whisper -> OpenRouter (translation) -> Subtitle output.</div>
-
-        <div class="setting-row">
-          <div class="setting-label">
-            Groq API Key
-            <span class="setting-badge missing" id="groq-badge">Not set</span>
-            <span style="font-size:0.58rem;color:var(--success);font-weight:600;text-transform:uppercase;letter-spacing:.04em">TRANSCRIPTION (FAST)</span>
-          </div>
-          <div class="setting-input-row">
-            <input class="setting-input" id="groq-key" type="password"
-              placeholder="gsk_..." autocomplete="off" spellcheck="false">
-          </div>
-          <div class="setting-hint">
-            Free - <a href="https://console.groq.com" target="_blank">console.groq.com</a>
-            &mdash; Whisper-large-v3-turbo. If left empty, local CPU Whisper is used (slow).
-          </div>
-        </div>
-
-        <hr class="modal-divider">
+        <div class="modal-sub">No local GPU/Colab needed. Pipeline: OpenRouter STT/translation -> Subtitle output.</div>
 
         <div class="setting-row">
           <div class="setting-label">
@@ -848,7 +829,6 @@
       try {
         const r = await fetch('/api/settings');
         const d = await r.json();
-        paintDot('ks-groq', !!d.GROQ_API_KEY?.set);
         paintDot('ks-or', !!d.OPENROUTER_API_KEY?.set);
       } catch (_) {}
     }
@@ -954,19 +934,13 @@
         const res = await fetch('/api/settings');
         const data = await res.json();
 
-        const groqSet = data.GROQ_API_KEY?.set;
         const orSet   = data.OPENROUTER_API_KEY?.set;
         const orModel = data.OPENROUTER_MODEL?.set ? data.OPENROUTER_MODEL.masked : '';
-
-        const groqBadge = document.getElementById('groq-badge');
-        groqBadge.textContent = groqSet ? 'Set' : 'Not set';
-        groqBadge.className = 'setting-badge ' + (groqSet ? 'ok' : 'missing');
 
         const orBadge = document.getElementById('or-badge');
         orBadge.textContent = orSet ? 'Set' : 'Not set';
         orBadge.className = 'setting-badge ' + (orSet ? 'ok' : 'missing');
 
-        document.getElementById('groq-key').placeholder = groqSet ? '(type to replace)' : 'gsk_...';
         document.getElementById('or-key').placeholder   = orSet   ? '(type to replace)' : 'sk-or-...';
         document.getElementById('or-model').value = orModel;
       } catch (_) {}
@@ -974,7 +948,6 @@
 
     function closeSettings() {
       document.getElementById('settingsOverlay').classList.remove('open');
-      document.getElementById('groq-key').value = '';
       document.getElementById('or-key').value   = '';
     }
 
@@ -991,7 +964,6 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            GROQ_API_KEY:       document.getElementById('groq-key').value.trim(),
             OPENROUTER_API_KEY: document.getElementById('or-key').value.trim(),
             OPENROUTER_MODEL:   document.getElementById('or-model').value.trim(),
           }),

@@ -21,7 +21,6 @@ jobs: dict[str, dict] = {}
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
 
 _MANAGED_KEYS = [
-    "GROQ_API_KEY",
     "OPENROUTER_API_KEY",
     "OPENROUTER_MODEL",
 ]
