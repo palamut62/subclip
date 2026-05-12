@@ -1,31 +1,34 @@
-<!DOCTYPE html>
-<html lang="en">
+﻿<!DOCTYPE html>
+<html lang="tr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ReClip — Free Media Downloader and Dub</title>
+  <title>SubClip - Video Indir ve Altyazi Ekle</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #f4f1eb;
-      --fg: #3a3a38;
-      --accent: #e85d2a;
-      --accent-hover: #d04e1f;
-      --muted: #9c9889;
+      --bg: #f7f8fb;
+      --fg: #22252b;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --muted: #687385;
       --card: #fff;
-      --card-border: #e2ded6;
-      --success: #2d8a4e;
-      --error: #c43d3d;
-      --radius: 14px;
-      --shimmer: linear-gradient(90deg, #ebe8e2 25%, #f0ede7 50%, #ebe8e2 75%);
+      --card-border: #dfe5ef;
+      --surface: #eef3f9;
+      --success: #16834a;
+      --error: #c73535;
+      --warning: #b56a00;
+      --radius: 12px;
+      --shadow: 0 18px 45px rgba(20, 35, 60, 0.08);
+      --shimmer: linear-gradient(90deg, #e8edf5 25%, #f4f7fb 50%, #e8edf5 75%);
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      font-family: 'DM Mono', monospace;
+      font-family: Arial, Helvetica, sans-serif;
       background: var(--bg);
       color: var(--fg);
       min-height: 100vh;
@@ -43,27 +46,28 @@
     }
 
     .page {
-      max-width: 620px;
+      max-width: 860px;
       margin: 0 auto;
-      padding: 60px 24px 80px;
+      padding: 40px 24px 64px;
     }
 
-    .brand { margin-bottom: 48px; position: relative; }
+    .brand { margin-bottom: 28px; position: relative; padding-right: 52px; }
     .brand h1 {
       font-family: 'Instrument Serif', serif;
-      font-size: 4.2rem;
+      font-size: 3.6rem;
       font-weight: 400;
-      letter-spacing: -0.03em;
+      letter-spacing: 0;
       line-height: 1;
       color: var(--fg);
     }
     .brand h1 em { font-style: italic; color: var(--accent); }
     .brand p {
       margin-top: 10px;
-      font-size: 0.78rem;
+      font-size: 0.95rem;
       color: var(--muted);
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
+      letter-spacing: 0;
+      text-transform: none;
+      max-width: 560px;
     }
 
     .settings-btn {
@@ -72,7 +76,7 @@
       right: 0;
       width: 36px;
       height: 36px;
-      border: 1.5px solid var(--card-border);
+      border: 1px solid var(--card-border);
       border-radius: 50%;
       background: var(--card);
       color: var(--muted);
@@ -202,15 +206,31 @@
       margin: 20px 0;
     }
 
+    .workbench {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .field-label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--fg);
+    }
+
     textarea {
       width: 100%;
       padding: 18px 20px;
-      border: 1.5px solid var(--card-border);
+      border: 1px solid var(--card-border);
       border-radius: var(--radius);
-      background: var(--card);
+      background: #fbfcfe;
       color: var(--fg);
-      font-family: 'DM Mono', monospace;
-      font-size: 0.88rem;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 1rem;
       outline: none;
       resize: none;
       min-height: 56px;
@@ -224,58 +244,139 @@
     textarea::placeholder { color: var(--muted); }
 
     .hint {
-      font-size: 0.7rem;
+      font-size: 0.82rem;
       color: var(--muted);
-      margin-bottom: 20px;
-      letter-spacing: 0.02em;
+      margin-bottom: 18px;
+      letter-spacing: 0;
     }
 
     .controls {
       display: flex;
-      gap: 10px;
-      margin-bottom: 6px;
-      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+      align-items: stretch;
+      flex-wrap: wrap;
     }
     .pill-group {
       display: flex;
-      border: 1.5px solid var(--card-border);
+      border: 1px solid var(--card-border);
       border-radius: 10px;
       overflow: hidden;
-      background: var(--card);
+      background: #f9fbfd;
     }
     .pill {
       padding: 9px 18px;
-      font-family: 'DM Mono', monospace;
-      font-size: 0.76rem;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 0.86rem;
+      font-weight: 700;
       border: none;
       background: transparent;
       color: var(--muted);
       cursor: pointer;
       transition: all 0.2s;
-      letter-spacing: 0.03em;
-      text-transform: uppercase;
+      letter-spacing: 0;
+      text-transform: none;
     }
-    .pill.active { background: var(--fg); color: var(--bg); }
+    .pill.active { background: var(--fg); color: #fff; }
     .pill:not(.active):hover { color: var(--fg); }
 
     .fetch-btn {
       flex: 1;
-      padding: 10px 20px;
+      min-width: 150px;
+      padding: 12px 20px;
       border: none;
       border-radius: 10px;
       background: var(--accent);
       color: #fff;
-      font-family: 'DM Mono', monospace;
-      font-size: 0.82rem;
-      font-weight: 500;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 0.95rem;
+      font-weight: 700;
       cursor: pointer;
       transition: background 0.2s, transform 0.1s;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
+      letter-spacing: 0;
+      text-transform: none;
     }
     .fetch-btn:hover { background: var(--accent-hover); }
     .fetch-btn:active { transform: scale(0.98); }
     .fetch-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .options-panel {
+      display: none;
+      gap: 14px;
+      align-items: end;
+      flex-wrap: wrap;
+      margin-top: 12px;
+      padding: 14px;
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+
+    .option-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 150px;
+    }
+    .option-group.wide { min-width: 220px; }
+
+    .option-label {
+      font-size: 0.74rem;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .select-control,
+    .number-control {
+      height: 38px;
+      border: 1px solid var(--card-border);
+      border-radius: 9px;
+      background: #fff;
+      color: var(--fg);
+      padding: 0 11px;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 0.9rem;
+    }
+
+    .checkbox-row {
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--fg);
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+
+    .mode-note {
+      width: 100%;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+
+    #langOptions select,
+    #langOptions input[type="number"] {
+      height: 38px !important;
+      border: 1px solid var(--card-border) !important;
+      border-radius: 9px !important;
+      background: #fff !important;
+      color: var(--fg) !important;
+      padding: 0 11px !important;
+      font-family: Arial, Helvetica, sans-serif !important;
+      font-size: 0.9rem !important;
+    }
+
+    #langOptions label {
+      color: var(--fg) !important;
+      font-size: 0.9rem !important;
+    }
+
+    #langOptions > span {
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.65);
+    }
 
     /* Cards */
     .cards { margin-top: 24px; }
@@ -286,8 +387,9 @@
       border: 1.5px solid var(--card-border);
       border-radius: var(--radius);
       background: var(--card);
-      padding: 14px;
-      margin-bottom: 10px;
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 8px 24px rgba(20, 35, 60, 0.05);
       animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     }
     @keyframes slideUp {
@@ -355,8 +457,9 @@
       justify-content: center;
     }
     .card-title {
-      font-family: 'Instrument Serif', serif;
-      font-size: 1rem;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 0.98rem;
+      font-weight: 700;
       line-height: 1.3;
       color: var(--fg);
       margin-bottom: 2px;
@@ -365,10 +468,10 @@
       white-space: nowrap;
     }
     .card-meta {
-      font-size: 0.68rem;
+      font-size: 0.78rem;
       color: var(--muted);
-      letter-spacing: 0.03em;
-      text-transform: uppercase;
+      letter-spacing: 0;
+      text-transform: none;
       margin-bottom: 8px;
     }
 
@@ -549,9 +652,13 @@
 <body>
   <div class="page">
     <div class="brand">
-      <h1>Re<em>Clip</em></h1>
-      <p>Free media downloader and dub</p>
-      <button class="settings-btn" onclick="openSettings()" title="Ayarlar">
+      <h1>Sub<em>Clip</em></h1>
+      <p>Download videos and add subtitles.</p>
+      <div id="keyStatusBar" style="margin-top:10px;display:flex;gap:14px;flex-wrap:wrap;font-size:0.78rem;color:var(--muted)">
+        <span id="ks-groq" style="display:flex;align-items:center;gap:6px"><span class="ks-dot" style="width:8px;height:8px;border-radius:50%;background:#c33"></span>Groq</span>
+        <span id="ks-or" style="display:flex;align-items:center;gap:6px"><span class="ks-dot" style="width:8px;height:8px;border-radius:50%;background:#c33"></span>OpenRouter</span>
+      </div>
+      <button class="settings-btn" onclick="openSettings()" title="Settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -562,53 +669,22 @@
     <!-- Settings Modal -->
     <div class="modal-overlay" id="settingsOverlay" onclick="closeOnBackdrop(event)">
       <div class="modal">
-        <div class="modal-title">Ayarlar</div>
-        <div class="modal-sub">API key'leri kaydet - yeniden baslatma gerekmez</div>
-
-        <div class="setting-row">
-          <div class="setting-label">
-            Colab Whisper URL
-            <span class="setting-badge missing" id="colab-badge">Ayarli degil</span>
-            <span style="font-size:0.58rem;color:var(--success);font-weight:600;text-transform:uppercase;letter-spacing:.04em">EN HIZLI</span>
-          </div>
-          <input class="setting-input" id="colab-url" type="text"
-            placeholder="https://xxxx-xx-xx-xx-xx.ngrok-free.app" autocomplete="off" spellcheck="false">
-          <div class="setting-hint">
-            <code>colab_whisper.ipynb</code> notebook'unu Google Colab'da ac (T4 GPU), calistir ve URL'yi buraya yaz.
-            Aktifken Colab GPU kullanilir &mdash; 250 dk video ~5-8 dk transkripsiyon.
-          </div>
-        </div>
-
-        <hr class="modal-divider">
-
-        <div class="setting-row">
-          <div class="setting-label">
-            Lipsync URL (Colab Wav2Lip)
-            <span class="setting-badge missing" id="lipsync-badge">Ayarli degil</span>
-            <span style="font-size:0.58rem;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.04em">OPSIYONEL</span>
-          </div>
-          <input class="setting-input" id="lipsync-url" type="text"
-            placeholder="https://xxxx-xx-xx-xx-xx.ngrok-free.app" autocomplete="off" spellcheck="false">
-          <div class="setting-hint">
-            <code>colab_lipsync.ipynb</code> notebook'unu Colab'da ac (T4 GPU), calistir ve URL'yi buraya yaz.
-            Aktifken dublaj sonunda dudak hareketleri cevrilen sese senkronize edilir.
-          </div>
-        </div>
-
-        <hr class="modal-divider">
+        <div class="modal-title">Settings</div>
+        <div class="modal-sub">No local GPU/Colab needed. Pipeline: Groq Whisper -> OpenRouter (translation) -> Subtitle output.</div>
 
         <div class="setting-row">
           <div class="setting-label">
             Groq API Key
-            <span class="setting-badge missing" id="groq-badge">Ayarli degil</span>
+            <span class="setting-badge missing" id="groq-badge">Not set</span>
+            <span style="font-size:0.58rem;color:var(--success);font-weight:600;text-transform:uppercase;letter-spacing:.04em">TRANSCRIPTION (FAST)</span>
           </div>
           <div class="setting-input-row">
             <input class="setting-input" id="groq-key" type="password"
               placeholder="gsk_..." autocomplete="off" spellcheck="false">
           </div>
           <div class="setting-hint">
-            Ucretsiz - <a href="https://console.groq.com" target="_blank">console.groq.com</a>
-            &mdash; Whisper transkripsiyon icin (~80 dk &rarr; ~3 dk)
+            Free - <a href="https://console.groq.com" target="_blank">console.groq.com</a>
+            &mdash; Whisper-large-v3-turbo. If left empty, local CPU Whisper is used (slow).
           </div>
         </div>
 
@@ -617,7 +693,8 @@
         <div class="setting-row">
           <div class="setting-label">
             OpenRouter API Key
-            <span class="setting-badge missing" id="or-badge">Ayarli degil</span>
+            <span class="setting-badge missing" id="or-badge">Not set</span>
+            <span style="font-size:0.58rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em">TRANSLATION</span>
           </div>
           <div class="setting-input-row">
             <input class="setting-input" id="or-key" type="password"
@@ -625,104 +702,127 @@
           </div>
           <div class="setting-hint">
             <a href="https://openrouter.ai" target="_blank">openrouter.ai</a>
-            &mdash; LLM ceviri icin (~$0.006 / 250 dk video)
+            &mdash; LLM translation (~$0.006 / 250 min). If empty, Google Translate is used.
           </div>
         </div>
 
         <div class="setting-row">
-          <div class="setting-label">OpenRouter Model <span style="opacity:.5">(opsiyonel)</span></div>
+          <div class="setting-label">OpenRouter Model <span style="opacity:.5">(optional)</span></div>
           <input class="setting-input" id="or-model" type="text"
             placeholder="deepseek/deepseek-chat-v3-0324" autocomplete="off" spellcheck="false">
           <div class="setting-hint">
-            Bos birakimrsan varsayilan kullanilir.
-            Ucuz alternatifler: <code>google/gemini-flash-1.5</code>, <code>meta-llama/llama-3.1-8b-instruct:free</code>
+            Default model is used if empty.
+            Cheap alternatives: <code>google/gemini-flash-1.5</code>, <code>meta-llama/llama-3.1-8b-instruct:free</code>
           </div>
         </div>
 
         <div class="modal-actions">
-          <button class="modal-btn cancel" onclick="closeSettings()">Iptal</button>
-          <button class="modal-btn save" id="saveBtn" onclick="saveSettings()">Kaydet</button>
+          <button class="modal-btn cancel" onclick="closeSettings()">Cancel</button>
+          <button class="modal-btn save" id="saveBtn" onclick="saveSettings()">Save</button>
         </div>
       </div>
     </div>
 
-    <textarea id="urls" placeholder="Paste one or more URLs..." rows="2"></textarea>
-    <p class="hint">Multiple links? Separate with spaces, commas, or newlines.</p>
+    <div class="workbench">
+    <label class="field-label" for="urls">Video links</label>
+    <textarea id="urls" placeholder="Paste one or more video links..." rows="3"></textarea>
+    <p class="hint">Separate multiple links with spaces, commas, or new lines.</p>
 
     <div class="controls">
       <div class="pill-group">
-        <button class="pill active" data-format="video" onclick="setFormat(this)">MP4</button>
-        <button class="pill" data-format="audio" onclick="setFormat(this)">MP3</button>
+        <button class="pill active" data-format="video" onclick="setFormat(this)">MP4 video</button>
+        <button class="pill" data-format="audio" onclick="setFormat(this)">MP3 audio</button>
       </div>
-      <button class="pill" id="dubToggle" onclick="toggleDub()" title="Dublaj ekle">Dub</button>
-      <button class="fetch-btn" id="goBtn" onclick="go()">Fetch</button>
+      <div class="format-group" style="margin-left:8px" role="tablist" title="Operation">
+        <button class="pill active" data-mode="download" onclick="setProcessMode(this)">Download only</button>
+        <button class="pill" data-mode="subtitle" onclick="setProcessMode(this)">Add subtitles</button>
+      </div>
+      <button class="fetch-btn" id="goBtn" onclick="go()">Fetch video</button>
     </div>
 
-    <div id="dubOptions" style="display:flex; margin-top:8px; gap:8px; align-items:center; flex-wrap:wrap; opacity:0.75">
-      <select id="dubEngine" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px 8px;font-size:13px;">
-        <option value="fast">Hızlı (edge-tts)</option>
-        <option value="krillin_deepseek">KrillinAI + DeepSeek (online)</option>
-        <option value="krillin_ollama">KrillinAI + Ollama (local)</option>
+    <div id="langOptions" class="options-panel">
+      <select id="srcLang" title="Source language" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px 8px;font-size:13px;">
+        <option value="auto">Auto-detect</option>
+        <option value="en">English</option>
+        <option value="tr">Turkish</option>
+        <option value="de">German</option>
+        <option value="es">Spanish</option>
+        <option value="fr">French</option>
+        <option value="it">Italian</option>
+        <option value="ru">Russian</option>
+        <option value="ar">Arabic</option>
+        <option value="ja">Japanese</option>
+        <option value="zh">Chinese</option>
+        <option value="pt">Portuguese</option>
       </select>
-      <select id="srcLang" title="Kaynak dil" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px 8px;font-size:13px;">
-        <option value="auto">Otomatik algıla</option>
-        <option value="en">İngilizce</option>
-        <option value="tr">Türkçe</option>
-        <option value="de">Almanca</option>
-        <option value="es">İspanyolca</option>
-        <option value="fr">Fransızca</option>
-        <option value="it">İtalyanca</option>
-        <option value="ru">Rusça</option>
-        <option value="ar">Arapça</option>
-        <option value="ja">Japonca</option>
-        <option value="zh">Çince</option>
-        <option value="pt">Portekizce</option>
+      <span style="color:#666;">-></span>
+      <span id="subOnly" style="display:none;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="subMode" title="Subtitle mode" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px 8px;font-size:13px;">
+        <option value="sidecar">SRT file</option>
+        <option value="burn">Burned-in</option>
+        <option value="both">SRT + Burned-in</option>
       </select>
-      <span style="color:#666;">→</span>
-      <select id="tgtLang" title="Hedef dil" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px 8px;font-size:13px;">
-        <option value="tr">Türkçe</option>
-        <option value="en">İngilizce</option>
-        <option value="de">Almanca</option>
-        <option value="es">İspanyolca</option>
-        <option value="fr">Fransızca</option>
-        <option value="it">İtalyanca</option>
-        <option value="ru">Rusça</option>
-        <option value="ar">Arapça</option>
-        <option value="ja">Japonca</option>
-        <option value="zh">Çince</option>
-        <option value="pt">Portekizce</option>
+      <label style="color:#ddd;font-size:13px">Language:</label>
+      <select id="subTgtLang" title="Subtitle target language" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px 8px;font-size:13px;">
+        <option value="en">English</option>
+        <option value="tr">Turkish</option>
+        <option value="de">German</option>
+        <option value="es">Spanish</option>
+        <option value="fr">French</option>
+        <option value="it">Italian</option>
+        <option value="ru">Russian</option>
+        <option value="ja">Japanese</option>
+        <option value="zh">Chinese</option>
       </select>
-      <select id="tgtGender" title="Ses cinsiyeti" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px 8px;font-size:13px;">
-        <option value="female">Kadin</option>
-        <option value="male">Erkek</option>
-        <option value="child">Cocuk</option>
-      </select>
-      <label style="display:flex;align-items:center;gap:4px;color:#ddd;font-size:13px;cursor:pointer" title="Birden fazla konusmaci varsa her birine ayri ses ata (Colab GPU gerekli)">
-        <input type="checkbox" id="multiSpeaker"> Coklu konusmaci
+      <label style="display:flex;align-items:center;gap:4px;color:#ddd;font-size:13px;" title="Subtitle font size">
+        Size <input type="number" id="subFontSize" value="22" min="12" max="64" style="width:58px;background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px 6px;font-size:13px;">
       </label>
-    </div>
-
-    <div class="modal-overlay" id="voicesOverlay">
-      <div class="modal" style="width:min(520px,calc(100vw - 32px))">
-        <div class="modal-title">Konusmaci Ses Atamasi</div>
-        <div class="modal-sub" id="voicesSub" style="margin-bottom:14px">Algilanan konusmacilar icin ses sec:</div>
-        <div id="voicesList"></div>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
-          <button id="voicesCancel" class="card-dl-btn" style="background:transparent;color:var(--muted);border:1px solid var(--card-border)">Iptal</button>
-          <button id="voicesConfirm" class="card-dl-btn">Dublaji baslat</button>
+      <label style="display:flex;align-items:center;gap:4px;color:#ddd;font-size:13px;" title="Subtitle font family">
+        Font
+        <select id="subFontFamily" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px 8px;font-size:13px;">
+          <option value="Arial">Arial</option>
+          <option value="Verdana">Verdana</option>
+          <option value="Tahoma">Tahoma</option>
+          <option value="Trebuchet MS">Trebuchet MS</option>
+          <option value="Segoe UI">Segoe UI</option>
+          <option value="DejaVu Sans">DejaVu Sans</option>
+        </select>
+      </label>
+      <label style="display:flex;align-items:center;gap:4px;color:#ddd;font-size:13px;">
+        Text <input type="color" id="subTextColor" value="#ffffff">
+      </label>
+      <label style="display:flex;align-items:center;gap:4px;color:#ddd;font-size:13px;">
+        Outline <input type="color" id="subOutlineColor" value="#000000">
+      </label>
+      <label style="display:flex;align-items:center;gap:4px;color:#ddd;font-size:13px;">
+        Box <input type="color" id="subBgColor" value="#000000">
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;color:#ddd;font-size:13px;" title="Subtitle box opacity">
+        Box Opacity
+        <input type="range" id="subBgOpacity" min="0" max="100" value="0" style="width:96px;">
+        <span id="subBgOpacityVal" style="min-width:30px;text-align:right;font-size:12px;color:#aaa;">0%</span>
+      </label>
+      <div style="width:100%;display:flex;justify-content:center;margin-top:6px;">
+        <div id="subtitleStylePreview" style="min-width:320px;max-width:100%;padding:10px 14px;border:1px dashed #dfe5ef;border-radius:8px;background:#0d0f14;position:relative;overflow:hidden;">
+          <div id="subtitleStylePreviewText" style="font-size:22px;line-height:1.35;font-family:Arial,sans-serif;color:#ffffff;text-align:center;text-shadow:0 0 2px #000,0 0 2px #000;background:transparent;display:inline-block;padding:2px 6px;border-radius:4px;">
+            Subtitle style live preview
+          </div>
         </div>
       </div>
+      </span>
+    </div>
+
     </div>
 
     <div id="cards" class="cards"></div>
 
     <div class="modal-overlay" id="dialogOverlay">
       <div class="modal" style="width:min(380px,calc(100vw - 32px))">
-        <div class="modal-title" id="dialogTitle">Onay</div>
+        <div class="modal-title" id="dialogTitle">Confirm</div>
         <div class="modal-sub" id="dialogMessage" style="white-space:pre-wrap;word-break:break-word;margin-bottom:18px"></div>
         <div style="display:flex;gap:8px;justify-content:flex-end">
-          <button id="dialogCancel" class="card-dl-btn" style="background:transparent;color:var(--muted);border:1px solid var(--card-border)">Iptal</button>
-          <button id="dialogConfirm" class="card-dl-btn">Tamam</button>
+          <button id="dialogCancel" class="card-dl-btn" style="background:transparent;color:var(--muted);border:1px solid var(--card-border)">Cancel</button>
+          <button id="dialogConfirm" class="card-dl-btn">OK</button>
         </div>
       </div>
     </div>
@@ -736,10 +836,24 @@
 
   <script>
     let currentFormat = 'video';
-    let dubEnabled = false;
+    let processMode = 'download';  // 'download' | 'subtitle'
     let cardData = [];
 
-    function showDialog({ title = 'Onay', message = '', confirmText = 'Tamam', cancelText = 'Iptal', variant = 'info' } = {}) {
+    function paintDot(id, on) {
+      const el = document.querySelector(`#${id} .ks-dot`);
+      if (el) el.style.background = on ? '#16834a' : '#c33';
+    }
+
+    async function refreshKeyStatus() {
+      try {
+        const r = await fetch('/api/settings');
+        const d = await r.json();
+        paintDot('ks-groq', !!d.GROQ_API_KEY?.set);
+        paintDot('ks-or', !!d.OPENROUTER_API_KEY?.set);
+      } catch (_) {}
+    }
+
+    function showDialog({ title = 'Confirm', message = '', confirmText = 'OK', cancelText = 'Cancel', variant = 'info' } = {}) {
       return new Promise((resolve) => {
         const overlay = document.getElementById('dialogOverlay');
         const titleEl = document.getElementById('dialogTitle');
@@ -777,15 +891,60 @@
       });
     }
 
-    function showAlert(message, title = 'Bilgi') {
-      return showDialog({ title, message, confirmText: 'Tamam', cancelText: '' });
+    function showAlert(message, title = 'Info') {
+      return showDialog({ title, message, confirmText: 'OK', cancelText: '' });
+    }
+
+    function readSubtitleStyle() {
+      const size = parseInt(document.getElementById('subFontSize')?.value || '22', 10);
+      const fontName = document.getElementById('subFontFamily')?.value || 'Arial';
+      const textColor = document.getElementById('subTextColor')?.value || '#ffffff';
+      const outlineColor = document.getElementById('subOutlineColor')?.value || '#000000';
+      const bgColor = document.getElementById('subBgColor')?.value || '#000000';
+      const bgOpacity = parseInt(document.getElementById('subBgOpacity')?.value || '0', 10);
+      return {
+        font_size: Number.isFinite(size) ? size : 22,
+        font_name: fontName,
+        text_color: textColor,
+        outline_color: outlineColor,
+        bg_color: bgColor,
+        bg_opacity: Number.isFinite(bgOpacity) ? bgOpacity : 0,
+      };
+    }
+
+    function hexToRgba(hex, alpha01) {
+      const raw = (hex || '#000000').replace('#', '');
+      if (raw.length !== 6) return `rgba(0,0,0,${alpha01})`;
+      const r = parseInt(raw.slice(0, 2), 16);
+      const g = parseInt(raw.slice(2, 4), 16);
+      const b = parseInt(raw.slice(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha01})`;
+    }
+
+    function updateSubtitleStylePreview() {
+      const t = document.getElementById('subtitleStylePreviewText');
+      const op = document.getElementById('subBgOpacityVal');
+      if (!t) return;
+      const s = readSubtitleStyle();
+      t.style.fontFamily = `${s.font_name}, sans-serif`;
+      t.style.fontSize = `${Math.max(12, Math.min(64, s.font_size))}px`;
+      t.style.color = s.text_color;
+      t.style.textShadow = `0 0 2px ${s.outline_color}, 0 0 2px ${s.outline_color}, 0 1px 2px ${s.outline_color}`;
+      t.style.background = hexToRgba(s.bg_color, Math.max(0, Math.min(100, s.bg_opacity)) / 100);
+      if (op) op.textContent = `${Math.max(0, Math.min(100, s.bg_opacity))}%`;
     }
 
     document.addEventListener('DOMContentLoaded', () => {
       const srcLang = document.getElementById('srcLang');
-      const dubEngine = document.getElementById('dubEngine');
-      if (srcLang) srcLang.value = 'en';
-      if (dubEngine) dubEngine.value = 'fast';
+      if (srcLang) srcLang.value = 'auto';
+      ['subFontSize', 'subFontFamily', 'subTextColor', 'subOutlineColor', 'subBgColor', 'subBgOpacity'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('input', updateSubtitleStylePreview);
+        el.addEventListener('change', updateSubtitleStylePreview);
+      });
+      updateSubtitleStylePreview();
+      refreshKeyStatus();
     });
 
     // --- Settings ---
@@ -797,33 +956,19 @@
 
         const groqSet = data.GROQ_API_KEY?.set;
         const orSet   = data.OPENROUTER_API_KEY?.set;
-        const colabSet = data.COLAB_URL?.set;
         const orModel = data.OPENROUTER_MODEL?.set ? data.OPENROUTER_MODEL.masked : '';
-        const colabUrl = data.COLAB_URL?.set ? data.COLAB_URL.masked : '';
-        const lipsyncSet = data.LIPSYNC_URL?.set;
-        const lipsyncUrl = lipsyncSet ? data.LIPSYNC_URL.masked : '';
 
         const groqBadge = document.getElementById('groq-badge');
-        groqBadge.textContent = groqSet ? 'Ayarli' : 'Ayarli degil';
+        groqBadge.textContent = groqSet ? 'Set' : 'Not set';
         groqBadge.className = 'setting-badge ' + (groqSet ? 'ok' : 'missing');
 
         const orBadge = document.getElementById('or-badge');
-        orBadge.textContent = orSet ? 'Ayarli' : 'Ayarli degil';
+        orBadge.textContent = orSet ? 'Set' : 'Not set';
         orBadge.className = 'setting-badge ' + (orSet ? 'ok' : 'missing');
 
-        const colabBadge = document.getElementById('colab-badge');
-        colabBadge.textContent = colabSet ? 'Ayarli' : 'Ayarli degil';
-        colabBadge.className = 'setting-badge ' + (colabSet ? 'ok' : 'missing');
-
-        document.getElementById('groq-key').placeholder = groqSet ? '(degistirmek icin yaz)' : 'gsk_...';
-        document.getElementById('or-key').placeholder   = orSet   ? '(degistirmek icin yaz)' : 'sk-or-...';
+        document.getElementById('groq-key').placeholder = groqSet ? '(type to replace)' : 'gsk_...';
+        document.getElementById('or-key').placeholder   = orSet   ? '(type to replace)' : 'sk-or-...';
         document.getElementById('or-model').value = orModel;
-        document.getElementById('colab-url').value = colabUrl;
-
-        const lipsyncBadge = document.getElementById('lipsync-badge');
-        lipsyncBadge.textContent = lipsyncSet ? 'Ayarli' : 'Ayarli degil';
-        lipsyncBadge.className = 'setting-badge ' + (lipsyncSet ? 'ok' : 'missing');
-        document.getElementById('lipsync-url').value = lipsyncUrl;
       } catch (_) {}
     }
 
@@ -831,8 +976,6 @@
       document.getElementById('settingsOverlay').classList.remove('open');
       document.getElementById('groq-key').value = '';
       document.getElementById('or-key').value   = '';
-      document.getElementById('colab-url').value = '';
-      document.getElementById('lipsync-url').value = '';
     }
 
     function closeOnBackdrop(e) {
@@ -842,25 +985,24 @@
     async function saveSettings() {
       const btn = document.getElementById('saveBtn');
       btn.disabled = true;
-      btn.textContent = 'Kaydediliyor...';
+      btn.textContent = 'Saving...';
       try {
         await fetch('/api/settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             GROQ_API_KEY:       document.getElementById('groq-key').value.trim(),
-            COLAB_URL:          document.getElementById('colab-url').value.trim(),
-            LIPSYNC_URL:        document.getElementById('lipsync-url').value.trim(),
             OPENROUTER_API_KEY: document.getElementById('or-key').value.trim(),
             OPENROUTER_MODEL:   document.getElementById('or-model').value.trim(),
           }),
         });
         closeSettings();
+        await refreshKeyStatus();
       } catch (_) {
-        showAlert('Kaydetme hatasi', 'Hata');
+        showAlert('Failed to save', 'Error');
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Kaydet';
+        btn.textContent = 'Save';
       }
     }
 
@@ -868,24 +1010,30 @@
       if (e.key === 'Escape') closeSettings();
     });
 
-    function toggleDub() {
-      dubEnabled = !dubEnabled;
-      const btn = document.getElementById('dubToggle');
-      const opts = document.getElementById('dubOptions');
-      opts.style.display = 'flex';
-      if (dubEnabled) {
-        btn.classList.add('active');
-        opts.style.opacity = '1';
+    function setProcessMode(btn) {
+      processMode = btn.dataset.mode;
+      btn.parentElement.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const lang = document.getElementById('langOptions');
+      const subOnly = document.getElementById('subOnly');
+      if (processMode === 'download') {
+        lang.style.display = 'none';
       } else {
-        btn.classList.remove('active');
-        opts.style.opacity = '0.75';
+        lang.style.display = 'flex';
+        subOnly.style.display = processMode === 'subtitle' ? 'inline-flex' : 'none';
+        const subTgtLang = document.getElementById('subTgtLang');
+        if (processMode === 'subtitle' && subTgtLang) subTgtLang.value = 'en';
       }
     }
 
     function setFormat(btn) {
-      document.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('[data-format]').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       currentFormat = btn.dataset.format;
+      if (currentFormat === 'audio' && processMode !== 'download') {
+        const downloadBtn = document.querySelector('[data-mode="download"]');
+        if (downloadBtn) setProcessMode(downloadBtn);
+      }
     }
 
     function parseUrls(text) {
@@ -914,25 +1062,161 @@
       return d.innerHTML;
     }
 
-    function canDubCard(c) {
+    function canSubtitleCard(c) {
       return !!c.jobId && (c.requestFormat === 'video' || c.format === 'video');
     }
 
-    function setCardDubEngine(idx, value) {
+    function setCardSubMode(idx, value) {
       if (!cardData[idx]) return;
-      cardData[idx].cardDubEngine = value;
+      cardData[idx].cardSubMode = value;
+    }
+
+    function setCardSubTgtLang(idx, value) {
+      if (!cardData[idx]) return;
+      cardData[idx].cardSubTgtLang = value;
+    }
+
+    function ensureCardSubtitleStyle(idx) {
+      const c = cardData[idx];
+      if (!c) return null;
+      const g = readSubtitleStyle();
+      if (c.cardSubFontSize == null) c.cardSubFontSize = g.font_size;
+      if (!c.cardSubFontName) c.cardSubFontName = g.font_name;
+      if (!c.cardSubTextColor) c.cardSubTextColor = g.text_color;
+      if (!c.cardSubOutlineColor) c.cardSubOutlineColor = g.outline_color;
+      if (!c.cardSubBgColor) c.cardSubBgColor = g.bg_color;
+      if (c.cardSubBgOpacity == null) c.cardSubBgOpacity = g.bg_opacity;
+      return c;
+    }
+
+    function cardSubtitleStyle(idx) {
+      const c = ensureCardSubtitleStyle(idx);
+      if (!c) return readSubtitleStyle();
+      return {
+        font_size: parseInt(c.cardSubFontSize || 22, 10),
+        font_name: c.cardSubFontName || 'Arial',
+        text_color: c.cardSubTextColor || '#ffffff',
+        outline_color: c.cardSubOutlineColor || '#000000',
+        bg_color: c.cardSubBgColor || '#000000',
+        bg_opacity: parseInt(c.cardSubBgOpacity || 0, 10),
+      };
+    }
+
+    function setCardSubFontSize(idx, value) {
+      const c = ensureCardSubtitleStyle(idx); if (!c) return;
+      c.cardSubFontSize = parseInt(value || '22', 10);
+      renderCard(idx);
+    }
+    function setCardSubFontName(idx, value) {
+      const c = ensureCardSubtitleStyle(idx); if (!c) return;
+      c.cardSubFontName = value || 'Arial';
+      renderCard(idx);
+    }
+    function setCardSubTextColor(idx, value) {
+      const c = ensureCardSubtitleStyle(idx); if (!c) return;
+      c.cardSubTextColor = value || '#ffffff';
+      renderCard(idx);
+    }
+    function setCardSubOutlineColor(idx, value) {
+      const c = ensureCardSubtitleStyle(idx); if (!c) return;
+      c.cardSubOutlineColor = value || '#000000';
+      renderCard(idx);
+    }
+    function setCardSubBgColor(idx, value) {
+      const c = ensureCardSubtitleStyle(idx); if (!c) return;
+      c.cardSubBgColor = value || '#000000';
+      renderCard(idx);
+    }
+    function setCardSubBgOpacity(idx, value) {
+      const c = ensureCardSubtitleStyle(idx); if (!c) return;
+      c.cardSubBgOpacity = parseInt(value || '0', 10);
+      renderCard(idx);
+    }
+
+    function toggleCardSubtitleStyle(idx) {
+      const c = cardData[idx];
+      if (!c) return;
+      c.cardStyleOpen = !c.cardStyleOpen;
+      renderCard(idx);
+    }
+
+async function addSubtitle(idx) {
+      const c = cardData[idx];
+      if (!c.jobId) return;
+      let mode = c.cardSubMode || document.getElementById('subMode')?.value || 'sidecar';
+      const srcLang = document.getElementById('srcLang')?.value || 'auto';
+      const tgtLang = c.cardSubTgtLang || document.getElementById('subTgtLang')?.value || 'tr';
+      const style = cardSubtitleStyle(idx);
+      const restyleOnly = !!c.hasSubtitle;
+      if (restyleOnly && mode === 'sidecar') {
+        // Style uygulamasi videoda gorunsun diye sidecar secimi otomatik burn'e cekilir.
+        mode = 'burn';
+        c.cardSubMode = 'burn';
+      }
+      const translate = true;
+      c.error = null;
+      c.status = 'subtitling';
+      c.error = null;
+      c.phaseMessage = 'Preparing subtitles';
+      c.progressPercent = 0;
+      c.elapsedSec = 0;
+      renderCard(idx);
+      try {
+        const res = await fetch(`/api/subtitle/${c.jobId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode,
+            translate,
+            src_lang: srcLang,
+            tgt_lang: tgtLang,
+            font_size: style.font_size,
+            font_name: style.font_name,
+            text_color: style.text_color,
+            outline_color: style.outline_color,
+            bg_color: style.bg_color,
+            bg_opacity: style.bg_opacity,
+            restyle_only: restyleOnly,
+          }),
+        });
+        const data = await res.json();
+        if (data.error) { c.status = 'error'; c.error = data.error; renderCard(idx); return; }
+        pollCard(idx);
+      } catch (err) {
+        c.status = 'error'; c.error = err.message; renderCard(idx);
+      }
+    }
+
+    function saveSrt(idx) {
+      const c = cardData[idx];
+      if (!c.jobId) return;
+      window.location.href = `/api/subtitle-file/${c.jobId}`;
+    }
+
+    async function removeSubtitle(idx) {
+      const c = cardData[idx];
+      if (!c.jobId) return;
+      await fetch(`/api/subtitle/${c.jobId}`, { method: 'DELETE' });
+      c.hasSubtitle = false;
+      c.subtitleVer = null;
+      renderCard(idx);
     }
 
     function friendlyError(err) {
-      if (err.includes('Unsupported URL')) return 'This URL is not supported';
+      if (err.includes('Unsupported URL')) return 'This link is not supported';
       if (err.includes('Video unavailable')) return 'Video is unavailable or private';
       if (err.includes('Private video')) return 'This video is private';
-      if (err.includes('HTTP Error 403')) return 'Access denied by the platform';
+      if (err.includes('HTTP Error 403')) return 'Access blocked by the platform';
       if (err.includes('HTTP Error 404')) return 'Video not found';
-      if (err.includes('copyright')) return 'Video blocked due to copyright';
+      if (err.includes('copyright')) return 'Blocked due to copyright';
       if (err.includes('geo')) return 'Video not available in your region';
-      if (err.includes('timed out') || err.includes('Timed out')) return 'Request timed out — try again';
-      if (err.includes('network') || err.includes('Network')) return 'Network error — check your connection';
+      if (err.includes('timed out') || err.includes('Timed out')) return 'Request timed out â€” try again';
+      if (err.includes('network') || err.includes('Network')) return 'Network error â€” check your connection';
+      if (err.includes('rate_limit_exceeded') || err.includes('Rate limit')) {
+        const m = err.match(/try again in ([^.]+)/i);
+        const wait = m ? ` Retry in ${m[1]}.` : ' Wait a few minutes.';
+        return `Groq audio quota exhausted (hourly limit).${wait}`;
+      }
       return err;
     }
 
@@ -944,7 +1228,7 @@
         const btn = document.getElementById(`copy-err-${idx}`);
         if (btn) {
           const old = btn.textContent;
-          btn.textContent = 'Kopyalandi';
+          btn.textContent = 'Copied';
           setTimeout(() => { btn.textContent = old; }, 1500);
         }
       } catch (_) {
@@ -968,7 +1252,7 @@
       const btn = document.getElementById('goBtn');
       const container = document.getElementById('cards');
       btn.disabled = true;
-      btn.textContent = 'Loading...';
+      btn.textContent = 'Preparing...';
       cardData = cardData.filter(c => c.fromHistory);
       rerenderAll();
 
@@ -1010,7 +1294,7 @@
       }
 
       btn.disabled = false;
-      btn.textContent = 'Fetch';
+      btn.textContent = 'Fetch video';
     }
 
     function renderCard(idx) {
@@ -1046,9 +1330,9 @@
             </div>
           </div>
           <div class="card-body">
-            <div class="card-title" style="color:var(--error)">Could not fetch video</div>
+            <div class="card-title" style="color:var(--error)">Couldn't fetch video info</div>
             <div class="card-error-msg" style="white-space:pre-wrap;word-break:break-word;max-height:200px;overflow:auto">${esc(friendlyError(c.error || ''))}</div>
-            <button id="copy-err-${idx}" class="card-dl-btn" style="background:transparent;color:var(--muted);border:1px solid var(--muted);margin-top:6px" onclick="copyError(${idx})">Hatayi kopyala</button>
+            <button id="copy-err-${idx}" class="card-dl-btn" style="background:transparent;color:var(--muted);border:1px solid var(--muted);margin-top:6px" onclick="copyError(${idx})">Copy error</button>
             <div class="card-error-url">${esc(c.url)}</div>
           </div>
         `;
@@ -1084,47 +1368,103 @@
         actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Download</button>${qualityChips}`;
       } else if (c.status === 'downloading') {
         actionHtml = `<span class="card-status downloading"><span class="spin"></span> ${esc(phaseText || 'Downloading...')}${progressText}</span>`;
-      } else if (c.status === 'dubbing') {
-        const msg = phaseText || 'Dublaj yapiliyor';
-        const pct = (c.progressPercent != null) ? ` %${Math.round(c.progressPercent)}` : '';
+      } else if (c.status === 'subtitling') {
+        const msg = phaseText || 'Subtitling';
+        const pct = (c.progressPercent != null) ? ` ${Math.round(c.progressPercent)}%` : '';
         actionHtml = `<span class="card-status downloading"><span class="spin"></span> ${esc(msg)}${pct}</span>`;
-      } else if (c.status === 'awaiting_voices') {
-        actionHtml = `<button class="card-dl-btn" onclick="openVoicesModal(${idx})">Konusmaci atamasi</button>
-          <span class="card-status downloading">${(c.speakers || []).length} konusmaci bekliyor</span>`;
       } else if (c.status === 'done') {
-        const selectedEngine = c.cardDubEngine || document.getElementById('dubEngine').value || 'fast';
-        const engineSelect = canDubCard(c)
-          ? `<select class="card-engine-select" onchange="setCardDubEngine(${idx}, this.value)">
-              <option value="fast" ${selectedEngine === 'fast' ? 'selected' : ''}>Hızlı (edge-tts)</option>
-              <option value="krillin_deepseek" ${selectedEngine === 'krillin_deepseek' ? 'selected' : ''}>KrillinAI + DeepSeek</option>
-              <option value="krillin_ollama" ${selectedEngine === 'krillin_ollama' ? 'selected' : ''}>KrillinAI + Ollama</option>
+        const selectedSubMode = c.cardSubMode || document.getElementById('subMode')?.value || 'sidecar';
+        const selectedSubTgtLang = c.cardSubTgtLang || document.getElementById('subTgtLang')?.value || 'en';
+        const cardStyle = cardSubtitleStyle(idx);
+        const styleOpen = !!c.cardStyleOpen;
+        const subLangOptions = [
+          ['en','English'],['tr','Turkish'],['de','German'],['es','Spanish'],
+          ['fr','French'],['it','Italian'],['ru','Russian'],['ja','Japanese'],['zh','Chinese'],
+        ].map(([v,l]) => `<option value="${v}" ${selectedSubTgtLang === v ? 'selected' : ''}>${l}</option>`).join('');
+        const subModeSelect = canSubtitleCard(c)
+          ? `<select class="card-engine-select" onchange="setCardSubMode(${idx}, this.value)" title="Subtitle mode">
+              <option value="sidecar" ${selectedSubMode === 'sidecar' ? 'selected' : ''}>Subs: SRT</option>
+              <option value="burn" ${selectedSubMode === 'burn' ? 'selected' : ''}>Subs: Burned-in</option>
+              <option value="both" ${selectedSubMode === 'both' ? 'selected' : ''}>Subs: SRT + Burned-in</option>
             </select>`
           : '';
-        const dubBtn = canDubCard(c)
-          ? `<button class="card-dl-btn" onclick="addDub(${idx})">Dublaj Ekle</button>`
+        const subLangSelect = canSubtitleCard(c)
+          ? `<select class="card-engine-select" onchange="setCardSubTgtLang(${idx}, this.value)" title="Subtitle language">${subLangOptions}</select>`
           : '';
-        actionHtml = `<button class="card-dl-btn done" onclick="saveCard(${idx})">Save</button>${engineSelect}${dubBtn}
-          <button class="card-dl-btn" style="background:transparent;color:var(--error);border:1px solid var(--error)" onclick="deleteCard(${idx})">Sil</button>
+        const subBtn = canSubtitleCard(c)
+          ? `<button class="card-dl-btn" onclick="addSubtitle(${idx})">${c.hasSubtitle ? 'Apply style' : 'Add subtitles'}</button>`
+          : '';
+        const srtBtn = c.hasSubtitle
+          ? `<button class="card-dl-btn" style="background:transparent;color:var(--accent);border:1px solid var(--accent)" onclick="saveSrt(${idx})">Download SRT</button>
+             <button class="card-dl-btn" style="background:transparent;color:var(--error);border:1px solid var(--error)" onclick="removeSubtitle(${idx})">Remove subs</button>`
+          : '';
+        const styleToggleBtn = canSubtitleCard(c)
+          ? `<button class="card-dl-btn" style="background:transparent;color:var(--muted);border:1px solid var(--card-border)" onclick="toggleCardSubtitleStyle(${idx})">${styleOpen ? 'Hide style' : 'Show style'}</button>`
+          : '';
+        const styleControls = canSubtitleCard(c)
+          ? `<div style="width:100%;display:${styleOpen ? 'flex' : 'none'};gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;padding-top:6px;border-top:1px dashed var(--card-border);${c.hasSubtitle ? '' : 'opacity:.6'}">
+               <span class="card-status" style="font-size:.64rem">Subtitle Style</span>
+               <input type="number" min="12" max="64" value="${cardStyle.font_size}" style="width:62px" class="card-engine-select" onchange="setCardSubFontSize(${idx}, this.value)" title="Font size">
+               <select class="card-engine-select" onchange="setCardSubFontName(${idx}, this.value)" title="Font family">
+                 <option value="Arial" ${cardStyle.font_name==='Arial'?'selected':''}>Arial</option>
+                 <option value="Verdana" ${cardStyle.font_name==='Verdana'?'selected':''}>Verdana</option>
+                 <option value="Tahoma" ${cardStyle.font_name==='Tahoma'?'selected':''}>Tahoma</option>
+                 <option value="Trebuchet MS" ${cardStyle.font_name==='Trebuchet MS'?'selected':''}>Trebuchet</option>
+                 <option value="Segoe UI" ${cardStyle.font_name==='Segoe UI'?'selected':''}>Segoe UI</option>
+                 <option value="DejaVu Sans" ${cardStyle.font_name==='DejaVu Sans'?'selected':''}>DejaVu Sans</option>
+               </select>
+               <label class="card-status" style="display:flex;align-items:center;gap:4px">T<input type="color" value="${cardStyle.text_color}" onchange="setCardSubTextColor(${idx}, this.value)"></label>
+               <label class="card-status" style="display:flex;align-items:center;gap:4px">O<input type="color" value="${cardStyle.outline_color}" onchange="setCardSubOutlineColor(${idx}, this.value)"></label>
+               <label class="card-status" style="display:flex;align-items:center;gap:4px">B<input type="color" value="${cardStyle.bg_color}" onchange="setCardSubBgColor(${idx}, this.value)"></label>
+               <input type="range" min="0" max="100" value="${cardStyle.bg_opacity}" style="width:92px" onchange="setCardSubBgOpacity(${idx}, this.value)" title="Box opacity">
+               <span class="card-status" style="font-size:.62rem">${cardStyle.bg_opacity}%</span>
+               ${c.hasSubtitle ? '' : '<span class="card-status" style="font-size:.62rem;color:var(--warning)">Add subtitles first, then Apply style</span>'}
+               <div style="width:100%;margin-top:4px;text-align:center">
+                 <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-family:${esc(cardStyle.font_name)},sans-serif;font-size:${cardStyle.font_size}px;color:${cardStyle.text_color};text-shadow:0 0 2px ${cardStyle.outline_color},0 1px 2px ${cardStyle.outline_color};background:${hexToRgba(cardStyle.bg_color, Math.max(0, Math.min(100, cardStyle.bg_opacity))/100)}">Live card preview</span>
+               </div>
+             </div>`
+          : '';
+        actionHtml = `<button class="card-dl-btn done" onclick="saveCard(${idx})">Save</button>${subModeSelect}${subLangSelect}${subBtn}${srtBtn}${styleToggleBtn}${styleControls}
+          <button class="card-dl-btn" style="background:transparent;color:var(--error);border:1px solid var(--error)" onclick="deleteCard(${idx})">Delete</button>
           <span class="card-status done">${esc(c.filename || '')}</span>`;
       } else if (c.status === 'error') {
-        actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Retry</button>
-          <button id="copy-err-${idx}" class="card-dl-btn" style="background:transparent;color:var(--muted);border:1px solid var(--muted)" onclick="copyError(${idx})">Hatayi kopyala</button>
+        const errSelSubMode = c.cardSubMode || 'sidecar';
+        const errSelTgtLang = c.cardSubTgtLang || 'en';
+        const errLangOpts = [
+          ['en','English'],['tr','Turkish'],['de','German'],['es','Spanish'],
+          ['fr','French'],['it','Italian'],['ru','Russian'],['ja','Japanese'],['zh','Chinese'],
+        ].map(([v,l]) => `<option value="${v}" ${errSelTgtLang === v ? 'selected' : ''}>${l}</option>`).join('');
+        const errVideoControls = canSubtitleCard(c)
+          ? `<select class="card-engine-select" onchange="setCardSubMode(${idx}, this.value)">
+              <option value="sidecar" ${errSelSubMode === 'sidecar' ? 'selected' : ''}>Subs: SRT</option>
+              <option value="burn" ${errSelSubMode === 'burn' ? 'selected' : ''}>Subs: Burned-in</option>
+              <option value="both" ${errSelSubMode === 'both' ? 'selected' : ''}>Subs: SRT + Burned-in</option>
+            </select>
+            <select class="card-engine-select" onchange="setCardSubTgtLang(${idx}, this.value)">${errLangOpts}</select>
+            <button class="card-dl-btn" onclick="addSubtitle(${idx})">Add subtitles</button>`
+          : '';
+        actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Retry download</button>
+          ${errVideoControls}
+          <button id="copy-err-${idx}" class="card-dl-btn" style="background:transparent;color:var(--muted);border:1px solid var(--muted)" onclick="copyError(${idx})">Copy error</button>
           <div class="card-status error" style="white-space:pre-wrap;word-break:break-word;max-height:200px;overflow:auto;width:100%;margin-top:6px">${esc(c.error || 'Download failed')}</div>`;
       }
 
-      const timingHtml = c.elapsedSec != null && (c.status === 'downloading' || c.status === 'dubbing' || c.status === 'done')
-        ? `<div class="card-timing">Sure: ${fmtElapsed(c.elapsedSec)}${phaseText ? ` · ${esc(phaseText)}${progressText}` : ''}</div>`
+      const timingHtml = c.elapsedSec != null && (c.status === 'downloading' || c.status === 'subtitling' || c.status === 'done')
+        ? `<div class="card-timing">Time: ${fmtElapsed(c.elapsedSec)}${phaseText ? ` Â· ${esc(phaseText)}${progressText}` : ''}</div>`
         : '';
 
-      const previewHtml = (c.status === 'done' && canDubCard(c))
-        ? `<div class="card-preview"><video controls preload="metadata" src="/api/media/${c.jobId}"></video></div>`
+      const trackHtml = (c.status === 'done' && c.hasSubtitle)
+        ? `<track kind="subtitles" label="Subtitles" srclang="auto" src="/api/subtitle-vtt/${c.jobId}?t=${c.subtitleVer || 0}" default>`
+        : '';
+      const previewHtml = (c.status === 'done' && canSubtitleCard(c))
+        ? `<div class="card-preview"><video controls preload="metadata" src="/api/media/${c.jobId}">${trackHtml}</video></div>`
         : '';
 
       el.innerHTML = `
         <div class="card-thumb">${thumbHtml}</div>
         <div class="card-body">
           <div class="card-title">${esc(c.title || 'Untitled')}</div>
-          <div class="card-meta">${esc(c.uploader)}${c.duration ? ' · ' + fmtDur(c.duration) : ''}</div>
+          <div class="card-meta">${esc(c.uploader)}${c.duration ? ' Â· ' + fmtDur(c.duration) : ''}</div>
           <div class="card-actions">${actionHtml}</div>
           ${timingHtml}
           ${previewHtml}
@@ -1139,7 +1479,7 @@
       const bar = document.createElement('div');
       bar.id = 'dl-all-bar';
       bar.className = 'dl-all-bar';
-      bar.innerHTML = `<button class="dl-all-btn" onclick="dlAll()">Download All</button>`;
+      bar.innerHTML = `<button class="dl-all-btn" onclick="dlAll()">Download all</button>`;
       document.getElementById('cards').appendChild(bar);
     }
 
@@ -1150,9 +1490,10 @@
 
     async function dlCard(idx) {
       const c = cardData[idx];
+      const style = readSubtitleStyle();
       c.status = 'downloading';
       c.error = null;
-      c.phaseMessage = 'Indirme hazirlaniyor';
+      c.phaseMessage = 'Preparing download';
       c.progressPercent = 0;
       c.elapsedSec = 0;
       renderCard(idx);
@@ -1165,12 +1506,16 @@
             url: c.url,
             format: currentFormat,
             format_id: c.selectedFormatId,
-            dub: dubEnabled,
-            dub_engine: dubEnabled ? document.getElementById('dubEngine').value : 'fast',
-            src_lang: dubEnabled ? document.getElementById('srcLang').value : 'auto',
-            tgt_lang: dubEnabled ? document.getElementById('tgtLang').value : 'tr',
-            gender: dubEnabled ? document.getElementById('tgtGender').value : 'female',
-            multi_speaker: dubEnabled ? document.getElementById('multiSpeaker').checked : false,
+            src_lang: processMode === 'subtitle' ? document.getElementById('srcLang').value : 'auto',
+            subtitle: processMode === 'subtitle',
+            subtitle_mode: processMode === 'subtitle' ? document.getElementById('subMode').value : 'sidecar',
+            subtitle_tgt_lang: processMode === 'subtitle' ? (document.getElementById('subTgtLang')?.value || 'en') : 'en',
+            subtitle_font_size: processMode === 'subtitle' ? style.font_size : 22,
+            subtitle_font_family: processMode === 'subtitle' ? style.font_name : 'Arial',
+            subtitle_color: processMode === 'subtitle' ? style.text_color : '#FFFFFF',
+            subtitle_outline_color: processMode === 'subtitle' ? style.outline_color : '#000000',
+            subtitle_bg_color: processMode === 'subtitle' ? style.bg_color : '#000000',
+            subtitle_bg_opacity: processMode === 'subtitle' ? style.bg_opacity : 0,
             title: c.title || '',
           }),
         });
@@ -1201,7 +1546,7 @@
           if (!res.ok || data.error) {
             clearInterval(iv);
             c.status = 'error';
-            c.error = data.error || `Status sorgusu basarisiz (${res.status})`;
+            c.error = data.error || `Status check failed (${res.status})`;
             renderCard(idx);
             return;
           }
@@ -1213,16 +1558,12 @@
             c.status = 'done';
             c.filename = data.filename;
             c.format = data.format;
+            if (data.has_subtitle && !c.hasSubtitle) c.subtitleVer = Date.now();
+            c.hasSubtitle = !!data.has_subtitle;
             c.fromHistory = true;
             renderCard(idx);
-          } else if (data.status === 'dubbing') {
-            if (c.status !== 'dubbing') { c.status = 'dubbing'; renderCard(idx); }
-          } else if (data.status === 'awaiting_voices') {
-            clearInterval(iv);
-            c.status = 'awaiting_voices';
-            c.speakers = data.speakers || [];
-            renderCard(idx);
-            openVoicesModal(idx);
+          } else if (data.status === 'subtitling') {
+            if (c.status !== 'subtitling') { c.status = 'subtitling'; renderCard(idx); }
           } else if (data.status === 'error') {
             clearInterval(iv);
             c.status = 'error';
@@ -1236,44 +1577,6 @@
           renderCard(idx);
         }
       }, 1000);
-    }
-
-    async function addDub(idx) {
-      const c = cardData[idx];
-      if (!c.jobId) return;
-
-      c.status = 'dubbing';
-      c.error = null;
-      c.phaseMessage = 'Dublaj hazirlaniyor';
-      c.progressPercent = 0;
-      c.elapsedSec = 0;
-      renderCard(idx);
-
-      try {
-        const selectedEngine = c.cardDubEngine || document.getElementById('dubEngine').value || 'fast';
-        const res = await fetch(`/api/dub/${c.jobId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            dub_engine: selectedEngine,
-            src_lang: document.getElementById('srcLang').value,
-            tgt_lang: document.getElementById('tgtLang').value,
-            gender: document.getElementById('tgtGender').value,
-          }),
-        });
-        const data = await res.json();
-        if (data.error) {
-          c.status = 'error';
-          c.error = data.error;
-          renderCard(idx);
-          return;
-        }
-        pollCard(idx);
-      } catch (err) {
-        c.status = 'error';
-        c.error = err.message;
-        renderCard(idx);
-      }
     }
 
     function saveCard(idx) {
@@ -1293,10 +1596,10 @@
         return;
       }
       const ok = await showDialog({
-        title: 'Videoyu sil',
-        message: (c.filename || c.title || 'Bu video') + ' silinsin mi?',
-        confirmText: 'Sil',
-        cancelText: 'Vazgec',
+        title: 'Delete video',
+        message: 'Delete ' + (c.filename || c.title || 'this video') + '?',
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
         variant: 'danger',
       });
       if (!ok) return;
@@ -1310,60 +1613,6 @@
     function rerenderAll() {
       document.getElementById('cards').innerHTML = '';
       cardData.forEach((_, i) => renderCard(i));
-    }
-
-    function openVoicesModal(idx) {
-      const c = cardData[idx];
-      const speakers = c.speakers || [];
-      const overlay = document.getElementById('voicesOverlay');
-      const list = document.getElementById('voicesList');
-      const sub = document.getElementById('voicesSub');
-      sub.textContent = `${speakers.length} konusmaci algilandi. Her biri icin ses cinsiyeti sec:`;
-      list.innerHTML = speakers.map((s, i) => {
-        const guess = s.gender_guess || 'female';
-        const pitchLabel = s.pitch_hz ? `~${s.pitch_hz} Hz` : 'pitch yok';
-        return `
-          <div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--card-border);border-radius:8px;margin-bottom:8px">
-            <div style="flex:1">
-              <div style="font-weight:600">${esc(s.id)}</div>
-              <div style="font-size:12px;color:var(--muted)">${s.segment_count} segment | ${s.total_seconds}s | ${pitchLabel}</div>
-            </div>
-            <select data-spk="${esc(s.id)}" class="voice-sel" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px 8px;font-size:13px;">
-              <option value="female" ${guess==='female'?'selected':''}>Kadin</option>
-              <option value="male" ${guess==='male'?'selected':''}>Erkek</option>
-              <option value="child" ${guess==='child'?'selected':''}>Cocuk</option>
-            </select>
-          </div>`;
-      }).join('');
-      overlay.classList.add('open');
-
-      const confirmBtn = document.getElementById('voicesConfirm');
-      const cancelBtn = document.getElementById('voicesCancel');
-      confirmBtn.onclick = async () => {
-        const voices = {};
-        list.querySelectorAll('.voice-sel').forEach(sel => {
-          voices[sel.dataset.spk] = sel.value;
-        });
-        overlay.classList.remove('open');
-        c.status = 'dubbing';
-        c.phaseMessage = 'Dublaj devam ediyor';
-        renderCard(idx);
-        try {
-          await fetch(`/api/assign-voices/${c.jobId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ voices }),
-          });
-          pollCard(idx);
-        } catch (e) {
-          c.status = 'error';
-          c.error = e.message;
-          renderCard(idx);
-        }
-      };
-      cancelBtn.onclick = () => {
-        overlay.classList.remove('open');
-      };
     }
 
     async function loadHistory() {
@@ -1380,6 +1629,7 @@
             jobId: j.job_id,
             format: j.format,
             requestFormat: j.format,
+            hasSubtitle: !!j.has_subtitle,
             fromHistory: true,
           });
           renderCard(cardData.length - 1);
@@ -1404,3 +1654,4 @@
   </script>
 </body>
 </html>
+

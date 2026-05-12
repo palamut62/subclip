@@ -1,43 +1,65 @@
 """
-dub.py - video dublaj motoru
+dub.py - video dublaj motoru (ElevenLabs TTS)
 
-Transkripsiyon engine onceligi (.env'e gore):
-  COLAB_URL          -> Colab GPU Whisper large-v3 (~5-8 dk / 250 dk video)  [EN IYI]
-  GROQ_API_KEY       -> Groq Whisper API (~hizli ama 250 dk'da rate limit var)
-  Hicbiri yoksa      -> local Whisper CPU (~80 dk)
+Transkripsiyon:
+  GROQ_API_KEY       -> Groq Whisper API (hizli)
+  Hicbiri yoksa      -> local Whisper CPU (yavas)
 
-Ceviri engine:
-  OPENROUTER_API_KEY -> OpenRouter LLM batch (~$0.006 / 250 dk video)
+Ceviri:
+  OPENROUTER_API_KEY -> OpenRouter LLM batch
   Hicbiri yoksa      -> Google Translate
+
+TTS: ElevenLabs (gercek/klonlanmis insan sesi).
 """
 
-import asyncio
 import os
 import subprocess
 import tempfile
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 
-import edge_tts
 from deep_translator import GoogleTranslator
 from faster_whisper import WhisperModel
+
+import elevenlabs_client as eleven
 
 _MODEL = None
 _GROQ_CHUNK_MIN = 20       # Groq'a gonderilecek chunk suresi (dakika)
 _TRANSLATE_BATCH = 80      # tek LLM / Google Translate cagrisindaki cumle sayisi
+_TTS_CONCURRENCY = 2       # ElevenLabs paralel istek limiti (dusuk = daha az rate limit riski)
+_MAX_TTS_SPEED = 1.9
+_MIN_TTS_SPEED = 0.85
+_TTS_WARN_LIMIT = 5
+_NO_WINDOW = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
 
-VOICE_MAP = {
-    "tr": {"female": "tr-TR-EmelNeural", "male": "tr-TR-AhmetNeural"},
-    "en": {"female": "en-US-JennyNeural", "male": "en-US-GuyNeural", "child": "en-US-AnaNeural"},
-    "de": {"female": "de-DE-KatjaNeural", "male": "de-DE-ConradNeural"},
-    "es": {"female": "es-ES-ElviraNeural", "male": "es-ES-AlvaroNeural"},
-    "fr": {"female": "fr-FR-DeniseNeural", "male": "fr-FR-HenriNeural"},
-    "it": {"female": "it-IT-ElsaNeural", "male": "it-IT-DiegoNeural"},
-    "ru": {"female": "ru-RU-SvetlanaNeural", "male": "ru-RU-DmitryNeural"},
-    "ar": {"female": "ar-SA-ZariyahNeural", "male": "ar-SA-HamedNeural"},
-    "ja": {"female": "ja-JP-NanamiNeural", "male": "ja-JP-KeitaNeural"},
-    "zh": {"female": "zh-CN-XiaoxiaoNeural", "male": "zh-CN-YunxiNeural", "child": "zh-CN-XiaoyiNeural"},
-    "pt": {"female": "pt-BR-FranciscaNeural", "male": "pt-BR-AntonioNeural"},
-}
+
+def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
+    if _NO_WINDOW and "creationflags" not in kwargs:
+        kwargs["creationflags"] = _NO_WINDOW
+    return subprocess.run(cmd, **kwargs)
+
+
+@dataclass
+class TtsReport:
+    ok: int = 0
+    failed: int = 0
+    failures: list[str] | None = None
+
+    def note_failure(self, idx: int, text: str, exc: Exception) -> None:
+        self.failed += 1
+        if self.failures is None:
+            self.failures = []
+        if len(self.failures) < _TTS_WARN_LIMIT:
+            preview = " ".join((text or "").split())[:80]
+            self.failures.append(f"#{idx + 1}: {preview} ({exc})")
+
+    def summary(self) -> str:
+        if not self.failed:
+            return ""
+        examples = "; ".join(self.failures or [])
+        extra = f" Examples: {examples}" if examples else ""
+        return f"{self.failed} TTS segments could not be generated.{extra}"
 
 _LANG_NAMES = {
     "tr": "Turkish", "en": "English", "de": "German", "es": "Spanish",
@@ -47,12 +69,65 @@ _LANG_NAMES = {
 
 
 # ---------------------------------------------------------------------------
+# Segment birlestirme - kisa boslukla ayrilmis parcalari tek TTS'e topla
+# ---------------------------------------------------------------------------
+
+_MERGE_MAX_GAP = 0.7        # iki segment arasi bu kadar veya daha az ise birlestir
+_MERGE_MAX_DUR = 14.0       # birlesik segment bu kadar saniyeyi gecmesin
+_MERGE_MAX_CHARS = 400      # ElevenLabs icin makul karakter limiti
+
+
+def _merge_close_segments(segments: list) -> list:
+    """[(start, end, text), ...] -> ardarda gelen yakin segmentleri birlestir.
+    Whisper cumleyi orta yerinden boldugunde olusan kesik kesik dublajin coz."""
+    if not segments:
+        return segments
+    out: list = []
+    cs, ce, ct = segments[0]
+    for s, e, t in segments[1:]:
+        gap = s - ce
+        merged_dur = e - cs
+        merged_chars = len(ct) + 1 + len(t)
+        if gap <= _MERGE_MAX_GAP and merged_dur <= _MERGE_MAX_DUR and merged_chars <= _MERGE_MAX_CHARS:
+            ct = (ct.rstrip() + " " + t.lstrip()).strip()
+            ce = e
+        else:
+            out.append((cs, ce, ct))
+            cs, ce, ct = s, e, t
+    out.append((cs, ce, ct))
+    return out
+
+
+def _merge_close_segments_dict(segments: list) -> list:
+    """Diarized segment dict listesi icin (speaker degisirse birlestirme)."""
+    if not segments:
+        return segments
+    out: list = []
+    cur = dict(segments[0])
+    for s in segments[1:]:
+        gap = s["start"] - cur["end"]
+        merged_dur = s["end"] - cur["start"]
+        merged_chars = len(cur["text"]) + 1 + len(s["text"])
+        if (s.get("speaker") == cur.get("speaker")
+                and gap <= _MERGE_MAX_GAP
+                and merged_dur <= _MERGE_MAX_DUR
+                and merged_chars <= _MERGE_MAX_CHARS):
+            cur["text"] = (cur["text"].rstrip() + " " + s["text"].lstrip()).strip()
+            cur["end"] = s["end"]
+        else:
+            out.append(cur)
+            cur = dict(s)
+    out.append(cur)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Yardimci - ffprobe ile sure al
 # ---------------------------------------------------------------------------
 
 def _audio_duration(path: str) -> float | None:
     try:
-        r = subprocess.run(
+        r = _run(
             ["ffprobe", "-v", "error", "-show_entries", "format=duration",
              "-of", "default=noprint_wrappers=1:nokey=1", path],
             capture_output=True, text=True,
@@ -67,7 +142,7 @@ def _audio_duration(path: str) -> float | None:
 # ---------------------------------------------------------------------------
 
 def _extract_audio(video_path: str, out_wav: str) -> None:
-    subprocess.run(
+    _run(
         ["ffmpeg", "-y", "-i", video_path, "-vn", "-ac", "1", "-ar", "16000", out_wav],
         check=True, capture_output=True,
     )
@@ -95,43 +170,78 @@ def _transcribe_local(wav_path: str) -> tuple[list, str]:
 # Transkripsiyon - Groq Whisper API
 # ---------------------------------------------------------------------------
 
-def _transcribe_colab(wav_path: str, src_lang: str, diarize: bool = False) -> tuple[list, str]:
-    """
-    Colab Whisper API ile transkripsiyon - GPU hizli, rate limit yok.
-    Dosyayi 32kbps MP3'e sikistirip tek istekte gonderir.
-    diarize=True ise segment tuple yerine [start, end, text, speaker] dict dondurur.
-    """
+def _transcribe_elevenlabs_scribe(wav_path: str, src_lang: str, diarize: bool = True) -> tuple[list, str]:
+    """ElevenLabs Scribe ile transkripsiyon + (opsiyonel) diarization.
+    diarize=True ise segment dict'leri konusmaci ID'si ile doner."""
     import requests
 
-    colab_url = os.environ["COLAB_URL"].rstrip("/")
+    api_key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("ELEVENLABS_API_KEY is not set (required for Scribe).")
 
-    mp3_path = wav_path.replace(".wav", "_upload.mp3")
-    subprocess.run([
+    mp3_path = wav_path.replace(".wav", "_scribe.mp3")
+    _run([
         "ffmpeg", "-y", "-i", wav_path,
-        "-ac", "1", "-ar", "16000", "-b:a", "32k", mp3_path,
+        "-ac", "1", "-ar", "16000", "-b:a", "64k", mp3_path,
     ], check=True, capture_output=True)
 
     try:
         with open(mp3_path, "rb") as f:
+            data = {"model_id": "scribe_v1", "diarize": "true" if diarize else "false"}
+            if src_lang and src_lang != "auto":
+                data["language_code"] = src_lang
             resp = requests.post(
-                f"{colab_url}/transcribe",
+                "https://api.elevenlabs.io/v1/speech-to-text",
+                headers={"xi-api-key": api_key},
                 files={"file": ("audio.mp3", f, "audio/mpeg")},
-                data={"src_lang": src_lang, "diarize": "true" if diarize else "false"},
-                timeout=1800,
+                data=data, timeout=1800,
             )
         if resp.status_code != 200:
-            raise RuntimeError(f"Colab API hatasi {resp.status_code}: {resp.text[:200]}")
-        data = resp.json()
-        if "error" in data:
-            raise RuntimeError(f"Colab transkripsiyon hatasi: {data['error']}")
-        if diarize and data.get("diarized"):
-            segments = [
-                {"start": s["start"], "end": s["end"], "text": s["text"], "speaker": s.get("speaker", "SPK0")}
-                for s in data["segments"]
-            ]
-        else:
-            segments = [(s["start"], s["end"], s["text"]) for s in data["segments"]]
-        return segments, data.get("language", "en")
+            raise RuntimeError(f"Scribe error {resp.status_code}: {resp.text[:300]}")
+        payload = resp.json()
+        lang = (payload.get("language_code") or "en").lower()[:2]
+
+        # Word-level -> segment'lere topla (konusmaci ya da uzun susma sinirinda boel).
+        words = payload.get("words") or []
+        segments: list = []
+        cur_words: list[str] = []
+        cur_start = None
+        cur_end = None
+        cur_spk = None
+        SILENCE_BREAK = 0.8
+
+        def flush() -> None:
+            if cur_words and cur_start is not None and cur_end is not None:
+                text = " ".join(cur_words).strip()
+                if text:
+                    if diarize:
+                        segments.append({"start": cur_start, "end": cur_end, "text": text,
+                                         "speaker": cur_spk or "SPK0"})
+                    else:
+                        segments.append((cur_start, cur_end, text))
+
+        for w in words:
+            if w.get("type") not in (None, "word"):
+                continue
+            text = (w.get("text") or "").strip()
+            if not text:
+                continue
+            s = float(w.get("start") or 0.0)
+            e = float(w.get("end") or s)
+            spk = w.get("speaker_id") or "SPK0"
+            if cur_start is None:
+                cur_start, cur_end, cur_spk = s, e, spk
+                cur_words = [text]
+                continue
+            same_spk = (spk == cur_spk)
+            gap = s - cur_end
+            if not same_spk or gap > SILENCE_BREAK:
+                flush()
+                cur_words = [text]; cur_start, cur_end, cur_spk = s, e, spk
+            else:
+                cur_words.append(text); cur_end = e
+        flush()
+        return segments, lang
     finally:
         try:
             os.unlink(mp3_path)
@@ -159,23 +269,25 @@ def _transcribe_groq(wav_path: str, src_lang: str) -> tuple[list, str]:
     with tempfile.TemporaryDirectory() as tmp:
         offset = 0.0
         idx = 0
-        while offset < total:
+        while offset < total - 0.05:
             dur = min(chunk_sec, total - offset)
-            chunk_mp3 = os.path.join(tmp, f"chunk_{idx}.mp3")
+            # FLAC: kayipsiz, MP3'teki encoder delay padding'i yok -> chunk
+            # sinirinda timestamp drift birikmiyor. 16 kHz mono ~= 8-12 MB / 20 dk.
+            chunk_path = os.path.join(tmp, f"chunk_{idx}.flac")
 
-            # Chunk'i 32kbps MP3'e cevir (kucuk boyut, Groq siniri altinda)
-            subprocess.run([
+            _run([
                 "ffmpeg", "-y", "-i", wav_path,
                 "-ss", f"{offset:.3f}", "-t", f"{dur:.3f}",
-                "-ac", "1", "-ar", "16000", "-b:a", "32k",
-                chunk_mp3,
+                "-ac", "1", "-ar", "16000",
+                "-c:a", "flac", "-compression_level", "8",
+                chunk_path,
             ], check=True, capture_output=True)
 
             extra: dict = {}
             if src_lang != "auto":
                 extra["language"] = src_lang
 
-            with open(chunk_mp3, "rb") as f:
+            with open(chunk_path, "rb") as f:
                 resp = client.audio.transcriptions.create(
                     model="whisper-large-v3-turbo",
                     file=f,
@@ -187,13 +299,20 @@ def _transcribe_groq(wav_path: str, src_lang: str) -> tuple[list, str]:
                 detected_lang = resp.language
 
             for seg in getattr(resp, "segments", None) or []:
-                s = getattr(seg, "start", None) or seg.get("start", 0)
-                e = getattr(seg, "end", None) or seg.get("end", 0)
-                t = (getattr(seg, "text", None) or seg.get("text", "")).strip()
+                if isinstance(seg, dict):
+                    s = seg.get("start", 0)
+                    e = seg.get("end", 0)
+                    t = (seg.get("text") or "").strip()
+                else:
+                    s = getattr(seg, "start", 0) or 0
+                    e = getattr(seg, "end", 0) or 0
+                    t = (getattr(seg, "text", "") or "").strip()
                 if t:
                     all_segments.append((s + offset, e + offset, t))
 
-            offset += chunk_sec
+            # Nominal chunk_sec yerine gercek dur ile ilerle: son parca kisaysa
+            # ofset bir sonraki dongude tutarsizlasmaz.
+            offset += dur
             idx += 1
 
     return all_segments, detected_lang
@@ -212,7 +331,16 @@ def _translate_google(segments: list, src_lang: str, tgt_lang: str) -> list:
         tr = GoogleTranslator(source=src_lang or "auto", target=tgt_lang)
         for i in range(0, len(texts), _TRANSLATE_BATCH):
             chunk = texts[i:i + _TRANSLATE_BATCH]
-            result = tr.translate_batch(chunk)
+            result = tr.translate_batch(chunk) or []
+            # Batch uzunluk uyumsuzlugu -> zip sessizce hizalamayi bozardi;
+            # bu durumda parca parca ceviri yap.
+            if len(result) != len(chunk):
+                result = []
+                for t in chunk:
+                    try:
+                        result.append(tr.translate(t) or t)
+                    except Exception:
+                        result.append(t)
             translated.extend(r or t for r, t in zip(result, chunk))
     except Exception:
         try:
@@ -292,53 +420,84 @@ def _translate_openrouter(segments: list, src_lang: str, tgt_lang: str) -> list:
 
 
 # ---------------------------------------------------------------------------
-# TTS - edge-tts async + concurrent
+# TTS - ElevenLabs (thread pool, paralel REST)
 # ---------------------------------------------------------------------------
 
-async def _tts_all(segments: list, voice: str, workdir: str) -> None:
-    sem = asyncio.Semaphore(8)
+def _tts_all(segments: list, voice_id: str, workdir: str) -> TtsReport:
+    """segments: [(start, end, text), ...] -> tek voice_id ile sentez."""
+    report = TtsReport(failures=[])
 
-    async def one(idx: int, text: str) -> None:
-        async with sem:
-            try:
-                comm = edge_tts.Communicate(text, voice)
-                await comm.save(os.path.join(workdir, f"seg_{idx}.mp3"))
-            except Exception:
-                pass
+    def one(item: tuple[int, str]) -> None:
+        idx, text = item
+        try:
+            eleven.tts(text, voice_id, os.path.join(workdir, f"seg_{idx}.mp3"))
+            report.ok += 1
+        except Exception as exc:
+            report.note_failure(idx, text, exc)
 
-    await asyncio.gather(
-        *(one(i, t) for i, (_, _, t) in enumerate(segments) if t.strip())
-    )
+    jobs = [(i, t) for i, (_, _, t) in enumerate(segments) if t.strip()]
+    with ThreadPoolExecutor(max_workers=_TTS_CONCURRENCY) as ex:
+        list(ex.map(one, jobs))
+    return report
 
 
-async def _tts_all_multi(segments_with_voice: list, workdir: str) -> None:
-    """segments_with_voice: [(start, end, text, voice), ...]"""
-    sem = asyncio.Semaphore(8)
+def _tts_all_multi(segments_with_voice: list, workdir: str) -> TtsReport:
+    """segments_with_voice: [(start, end, text, voice_id), ...]"""
+    report = TtsReport(failures=[])
 
-    async def one(idx: int, text: str, voice: str) -> None:
-        async with sem:
-            try:
-                comm = edge_tts.Communicate(text, voice)
-                await comm.save(os.path.join(workdir, f"seg_{idx}.mp3"))
-            except Exception:
-                pass
+    def one(item: tuple[int, str, str]) -> None:
+        idx, text, voice_id = item
+        try:
+            eleven.tts(text, voice_id, os.path.join(workdir, f"seg_{idx}.mp3"))
+            report.ok += 1
+        except Exception as exc:
+            report.note_failure(idx, text, exc)
 
-    await asyncio.gather(
-        *(one(i, t, v) for i, (_, _, t, v) in enumerate(segments_with_voice) if t.strip())
-    )
+    jobs = [(i, t, v) for i, (_, _, t, v) in enumerate(segments_with_voice) if t.strip()]
+    with ThreadPoolExecutor(max_workers=_TTS_CONCURRENCY) as ex:
+        list(ex.map(one, jobs))
+    return report
 
 
 # ---------------------------------------------------------------------------
 # Hiz ayarlama (TTS pencereye sigmiyorsa)
 # ---------------------------------------------------------------------------
 
-def _speed_adjust(mp3: str, window_sec: float, workdir: str, idx: int) -> str:
+def _trim_silence(mp3: str, workdir: str, idx: int) -> str:
+    """ElevenLabs TTS cikislarindaki ~150-300ms leading silence'i kes.
+    Sadece bastan kesiyoruz; sonu birakiyoruz ki segment sonu klips/clip olmasin.
+    Cok kucuk bir fade-in ile concat sinirinda klik onleniyor."""
+    out = os.path.join(workdir, f"seg_{idx}_trim.mp3")
+    r = _run([
+        "ffmpeg", "-y", "-i", mp3,
+        "-af",
+        "silenceremove=start_periods=1:start_silence=0.1:start_threshold=-50dB:"
+        "detection=peak,"
+        "afade=t=in:st=0:d=0.015",
+        out,
+    ], capture_output=True)
+    if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > 0:
+        return out
+    return mp3
+
+
+def _speed_adjust(mp3: str, window_sec: float, workdir: str, idx: int,
+                  hard_cap_sec: float | None = None) -> str:
+    """Sadece TTS parcasi pencereye sigmiyorsa hizlandir. Yavaslatma yok —
+    yavaslatma drift'e yol aciyordu. TTS doga hizinda kalirsa orijinal
+    ritmiyle uyumlu duyuluyor (hem trans hem TTS ayni dilsel onset'lere sahip)."""
     dur = _audio_duration(mp3)
-    if dur is None or dur <= window_sec * 1.25:
+    if dur is None or dur <= 0 or window_sec <= 0:
         return mp3
-    speed = min(1.25, dur / window_sec)
-    out = os.path.join(workdir, f"seg_{idx}_fast.mp3")
-    r = subprocess.run(
+    # Pencereye sigiyorsa dokunma — dogal hizda kalsin
+    if dur <= window_sec * 1.05:
+        return mp3
+    target = hard_cap_sec if (hard_cap_sec and hard_cap_sec > 0) else window_sec
+    speed = min(_MAX_TTS_SPEED, max(1.0, dur / target))
+    if abs(speed - 1.0) < 0.03:
+        return mp3
+    out = os.path.join(workdir, f"seg_{idx}_fit.mp3")
+    r = _run(
         ["ffmpeg", "-y", "-i", mp3, "-filter:a", f"atempo={speed:.3f}", out],
         capture_output=True,
     )
@@ -355,9 +514,12 @@ def _build_dub_track(valid: list[tuple[float, str]], workdir: str, out_wav: str)
 
     for start_sec, mp3_path in valid:
         gap = start_sec - cursor
+        if gap < -0.2:
+            start_sec = cursor
+            gap = 0.0
         if gap > 0.05:
             sil = os.path.join(workdir, f"sil_{len(pieces)}.wav")
-            subprocess.run([
+            _run([
                 "ffmpeg", "-y", "-f", "lavfi",
                 "-i", "anullsrc=r=44100:cl=stereo",
                 "-t", f"{gap:.3f}",
@@ -366,8 +528,9 @@ def _build_dub_track(valid: list[tuple[float, str]], workdir: str, out_wav: str)
             pieces.append(sil)
 
         seg_wav = os.path.join(workdir, f"seg_{len(pieces)}_out.wav")
-        r = subprocess.run([
+        r = _run([
             "ffmpeg", "-y", "-i", mp3_path,
+            "-af", "afade=t=in:st=0:d=0.015,areverse,afade=t=in:st=0:d=0.015,areverse",
             "-ar", "44100", "-ac", "2", "-c:a", "pcm_s16le",
             seg_wav,
         ], capture_output=True)
@@ -378,14 +541,14 @@ def _build_dub_track(valid: list[tuple[float, str]], workdir: str, out_wav: str)
             cursor = start_sec
 
     if not pieces:
-        raise RuntimeError("TTS segmentleri oluşturulamadı")
+        raise RuntimeError("Failed to build TTS segments")
 
     list_file = os.path.join(workdir, "pieces.txt")
     with open(list_file, "w", encoding="utf-8") as f:
         for p in pieces:
             f.write(f"file '{p.replace(chr(92), '/')}'\n")
 
-    subprocess.run([
+    _run([
         "ffmpeg", "-y", "-f", "concat", "-safe", "0",
         "-i", list_file, "-c", "copy", out_wav,
     ], check=True, capture_output=True)
@@ -397,100 +560,143 @@ def _build_dub_track(valid: list[tuple[float, str]], workdir: str, out_wav: str)
 
 def dub_video(video_path: str, out_path: str, keep_original_volume: float = 0.15,
               src_lang: str = "auto", tgt_lang: str = "tr", gender: str = "female",
-              on_progress: Callable[[float, str], None] | None = None) -> None:
+              voice_mode: str = "preset",
+              on_progress: Callable[[float, str], None] | None = None) -> dict:
     """
-    Video dublaj - engine secimi otomatik:
-      COLAB_URL           -> Colab GPU Whisper (en hizli, en iyi kalite)
-      GROQ_API_KEY        -> Groq Whisper (hizli, kisa videolar icin iyi)
-      OPENROUTER_API_KEY  -> OpenRouter LLM ceviri (kaliteli)
+    ElevenLabs ile dublaj.
+      voice_mode="preset" -> cinsiyete gore varsayilan ElevenLabs voice
+      voice_mode="clone"  -> orijinal sesi klonla, dublaj sonunda sil
+
+    Returns dict with: {segments, source_lang, tgt_lang}
     """
-    lang_voices = VOICE_MAP.get(tgt_lang, {"female": "tr-TR-EmelNeural"})
-    voice = lang_voices.get(gender) or lang_voices.get("female") or next(iter(lang_voices.values()))
-    use_colab = bool(os.environ.get("COLAB_URL"))
     use_groq = bool(os.environ.get("GROQ_API_KEY"))
     use_openrouter = bool(os.environ.get("OPENROUTER_API_KEY"))
+
+    def final_mix() -> None:
+        if on_progress:
+            on_progress(96, "Finalizing video")
+        _run([
+            "ffmpeg", "-y",
+            "-i", video_path,
+            "-i", dub_wav,
+            "-filter_complex",
+            f"[0:a]volume={keep_original_volume}[a0];[a0][1:a]amix=inputs=2:duration=first:dropout_transition=0[aout]",
+            "-map", "0:v", "-map", "[aout]",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "192k",
+            "-fflags", "+genpts", "-avoid_negative_ts", "make_zero",
+            "-movflags", "+faststart",
+            out_path,
+        ], check=True, capture_output=True)
 
     with tempfile.TemporaryDirectory() as tmp:
         wav = os.path.join(tmp, "src.wav")
         if on_progress:
-            on_progress(8, "Ses cikariliyor")
+            on_progress(8, "Extracting audio")
         _extract_audio(video_path, wav)
 
-        # --- Transkripsiyon (oncelik: Colab > Groq > Local) ---
+        # --- Transcription (Groq > Local) ---
         if on_progress:
-            on_progress(22, "Transkripsiyon yapiliyor")
-        if use_colab:
-            segments, detected_lang = _transcribe_colab(wav, src_lang)
-        elif use_groq:
+            on_progress(22, "Transcribing")
+        if use_groq:
             segments, detected_lang = _transcribe_groq(wav, src_lang)
         else:
             segments, detected_lang = _transcribe_local(wav)
 
         if not segments:
-            raise RuntimeError("Konuşma tespit edilemedi")
+            raise RuntimeError("No speech detected")
+
+        # Whisper kucuk parcalara bolmus olabilir → bitisik segmentleri birlestir
+        # ki TTS surekli/dogal konussun, kesik kesik olmasin.
+        segments = _merge_close_segments(segments)
 
         source = detected_lang if src_lang == "auto" else src_lang
 
         # --- Ceviri ---
         if source != tgt_lang:
             if on_progress:
-                on_progress(48, "Ceviri yapiliyor")
+                on_progress(48, "Translating")
             if use_openrouter:
                 segments = _translate_openrouter(segments, source, tgt_lang)
             else:
                 segments = _translate_google(segments, source, tgt_lang)
 
+        # --- Voice (clone veya preset) ---
+        cloned_voice_id: str | None = None
+        if voice_mode == "clone":
+            if on_progress:
+                on_progress(62, "Cloning speaker voice")
+            sample = os.path.join(tmp, "voice_sample.wav")
+            ranges = [(s, e) for s, e, _ in segments]
+            if eleven.extract_speaker_sample(wav, ranges, sample):
+                try:
+                    cloned_voice_id = eleven.clone_voice(sample, f"reclip_{os.path.basename(out_path)}")
+                except Exception as exc:
+                    if on_progress:
+                        on_progress(63, f"Clone failed, falling back to preset voice: {exc}")
+        voice_id = cloned_voice_id or eleven.preset_voice_id(gender)
+
         # --- TTS ---
         if on_progress:
-            on_progress(68, "Seslendirme uretiliyor")
-        asyncio.run(_tts_all(segments, voice, tmp))
+            on_progress(68, "Generating speech (ElevenLabs)")
+        try:
+            tts_report = _tts_all(segments, voice_id, tmp)
+        finally:
+            if cloned_voice_id:
+                eleven.delete_voice(cloned_voice_id)
+        if tts_report.failed and on_progress:
+            on_progress(76, tts_report.summary())
 
         # --- Hiz ayarla + gecerli segmentleri topla ---
         if on_progress:
-            on_progress(82, "Parcalar hazirlaniyor")
+            on_progress(82, "Preparing segments")
         valid: list[tuple[float, str]] = []
         for idx, (start, end, _) in enumerate(segments):
             mp3 = os.path.join(tmp, f"seg_{idx}.mp3")
             if not os.path.exists(mp3) or os.path.getsize(mp3) == 0:
                 continue
             next_start = segments[idx + 1][0] if idx + 1 < len(segments) else start + (end - start) * 2
-            window = max(0.8, next_start - start)
-            mp3 = _speed_adjust(mp3, window, tmp, idx)
+            # Pencere = orijinal cumle + sonraki sessizlik. Sessizligi trimlemiyoruz;
+            # ElevenLabs'in dogal onset'i Whisper start ile hizali.
+            window = max(0.6, next_start - start)
+            mp3 = _speed_adjust(mp3, window, tmp, idx, hard_cap_sec=window)
             valid.append((start, mp3))
 
         if not valid:
-            raise RuntimeError("Geçerli TTS segmenti bulunamadı")
+            detail = tts_report.summary()
+            raise RuntimeError(f"No valid TTS segments found. {detail}".strip())
 
         valid.sort(key=lambda x: x[0])
 
         dub_wav = os.path.join(tmp, "dub.wav")
         if on_progress:
-            on_progress(90, "Ses parcasi birlestiriliyor")
+            on_progress(90, "Merging audio segments")
         _build_dub_track(valid, tmp, dub_wav)
 
         # --- Final mix ---
-        if os.environ.get("LIPSYNC_URL"):
+        if os.environ.get("SYNC_API_KEY"):
             if on_progress:
-                on_progress(94, "Lip-sync Colab'a gonderiliyor")
+                on_progress(94, "Sending to Sync.so for lipsync")
             from lipsync_client import lipsync_video
 
-            lipsync_video(video_path, dub_wav, out_path, on_progress=on_progress)
+            try:
+                lipsync_video(video_path, dub_wav, out_path, on_progress=on_progress)
+            except Exception as exc:
+                if on_progress:
+                    on_progress(
+                        95,
+                        f"Lipsync unavailable, continuing with normal dub: {exc}",
+                    )
+                final_mix()
         else:
-            if on_progress:
-                on_progress(96, "Video final hale getiriliyor")
-            subprocess.run([
-                "ffmpeg", "-y",
-                "-i", video_path,
-                "-i", dub_wav,
-                "-filter_complex",
-                f"[0:a]volume={keep_original_volume}[a0];[a0][1:a]amix=inputs=2:duration=first:dropout_transition=0[aout]",
-                "-map", "0:v", "-map", "[aout]",
-                "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-                "-shortest",
-                out_path,
-            ], check=True, capture_output=True)
+            final_mix()
         if on_progress:
-            on_progress(100, "Dublaj tamamlandi")
+            on_progress(100, "Dub complete")
+        return {
+            "segments": segments,
+            "source_lang": source,
+            "tgt_lang": tgt_lang,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -518,7 +724,7 @@ def _extract_speaker_audio(wav_path: str, segments: list, workdir: str) -> dict[
         ranges.sort()
         select = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in ranges)
         out = os.path.join(workdir, f"spk_{spk}.wav")
-        subprocess.run(
+        _run(
             ["ffmpeg", "-y", "-i", wav_path, "-af", f"aselect='{select}',asetpts=N/SR/TB",
              "-ac", "1", "-ar", "16000", out],
             capture_output=True,
@@ -551,24 +757,27 @@ def analyze_speakers(video_path: str, workdir: str, src_lang: str = "auto",
     """Videoyu transcribe + diarize eder, her speaker icin cinsiyet tahmini yapar.
     Returns: {segments, source_lang, speakers: [{id, segment_count, total_seconds, pitch_hz, gender_guess}]}
     """
-    if not os.environ.get("COLAB_URL"):
-        raise RuntimeError("Coklu konusmaci modu icin COLAB_URL gerekli (pyannote GPU'da calisir).")
+    if not os.environ.get("ELEVENLABS_API_KEY"):
+        raise RuntimeError("Multi-speaker mode requires ELEVENLABS_API_KEY (Scribe diarization).")
 
     wav = os.path.join(workdir, "analyze.wav")
     if on_progress:
-        on_progress(8, "Ses cikariliyor")
+        on_progress(8, "Extracting audio")
     _extract_audio(video_path, wav)
 
     if on_progress:
-        on_progress(25, "Transcribe + diarize")
-    segments, detected = _transcribe_colab(wav, src_lang, diarize=True)
+        on_progress(25, "Transcribe + diarize (ElevenLabs Scribe)")
+    segments, detected = _transcribe_elevenlabs_scribe(wav, src_lang, diarize=True)
     if not segments or not isinstance(segments[0], dict):
-        raise RuntimeError("Colab diarization dondurmedi (HF_TOKEN ayarli mi?).")
+        raise RuntimeError("Scribe diarization returned no results.")
+
+    # Ayni konusmacinin ardarda kisa parcalarini birlestir → kesik kesik bitsin
+    segments = _merge_close_segments_dict(segments)
 
     source = detected if src_lang == "auto" else src_lang
 
     if on_progress:
-        on_progress(70, "Konusmaci cinsiyeti tahmin ediliyor")
+        on_progress(70, "Estimating speaker gender")
     spk_audios = _extract_speaker_audio(wav, segments, workdir)
 
     by_spk: dict[str, list] = {}
@@ -588,7 +797,7 @@ def analyze_speakers(video_path: str, workdir: str, src_lang: str = "auto",
         })
 
     if on_progress:
-        on_progress(90, "Analiz tamam")
+        on_progress(90, "Analysis complete")
     return {
         "segments": segments,
         "source_lang": source,
@@ -600,72 +809,113 @@ def analyze_speakers(video_path: str, workdir: str, src_lang: str = "auto",
 def finalize_multi_voice(video_path: str, out_path: str, analysis: dict,
                          voices_map: dict[str, str], tgt_lang: str = "tr",
                          keep_original_volume: float = 0.15,
+                         voice_mode: str = "preset",
                          on_progress: Callable[[float, str], None] | None = None) -> None:
-    """analysis['segments'] + voices_map (speaker_id -> gender str) -> final dublaj."""
+    """analysis['segments'] + voices_map (speaker_id -> gender str) -> final dublaj.
+    voice_mode='clone' ise her konusmacinin sesini ayri ayri klonlar."""
     segments = analysis["segments"]
     source = analysis["source_lang"]
+    src_wav = analysis.get("audio_path")
     use_openrouter = bool(os.environ.get("OPENROUTER_API_KEY"))
 
-    # speaker -> gender -> actual voice
-    lang_voices = VOICE_MAP.get(tgt_lang, {"female": "tr-TR-EmelNeural"})
+    # speaker -> voice_id (clone veya preset)
+    cloned_ids: list[str] = []
+    speaker_voice: dict[str, str] = {}
+
+    def resolve_voices(workdir: str) -> None:
+        if voice_mode == "clone" and src_wav and os.path.exists(src_wav):
+            by_spk: dict[str, list] = {}
+            for s in segments:
+                by_spk.setdefault(s["speaker"], []).append((s["start"], s["end"]))
+            for spk, ranges in by_spk.items():
+                sample = os.path.join(workdir, f"clone_{spk}.wav")
+                if eleven.extract_speaker_sample(src_wav, ranges, sample):
+                    try:
+                        vid = eleven.clone_voice(sample, f"reclip_{spk}")
+                        speaker_voice[spk] = vid
+                        cloned_ids.append(vid)
+                        continue
+                    except Exception:
+                        pass
+                speaker_voice[spk] = eleven.preset_voice_id(voices_map.get(spk, "female"))
+        else:
+            for s in segments:
+                spk = s["speaker"]
+                if spk not in speaker_voice:
+                    speaker_voice[spk] = eleven.preset_voice_id(voices_map.get(spk, "female"))
+
     def voice_for(spk: str) -> str:
-        g = voices_map.get(spk, "female")
-        return lang_voices.get(g) or lang_voices.get("female") or next(iter(lang_voices.values()))
+        return speaker_voice.get(spk) or eleven.preset_voice_id("female")
 
     # Dict segmentleri tuple'a cevir (ceviri icin)
     seg_tuples = [(s["start"], s["end"], s["text"]) for s in segments]
 
     if source != tgt_lang:
         if on_progress:
-            on_progress(35, "Ceviri yapiliyor")
+            on_progress(35, "Translating")
         if use_openrouter:
             seg_tuples = _translate_openrouter(seg_tuples, source, tgt_lang)
         else:
             seg_tuples = _translate_google(seg_tuples, source, tgt_lang)
 
-    # Her segmente voice ekle (speaker bilgisi orijinal segments'te)
-    seg_with_voice = [
-        (s["start"], s["end"], t_tr, voice_for(s["speaker"]))
-        for s, (_, _, t_tr) in zip(segments, seg_tuples)
-    ]
-
     with tempfile.TemporaryDirectory() as tmp:
         if on_progress:
-            on_progress(55, "Coklu ses TTS")
-        asyncio.run(_tts_all_multi(seg_with_voice, tmp))
+            on_progress(50, "Preparing voices" + (" (cloning)" if voice_mode == "clone" else ""))
+        resolve_voices(tmp)
+
+        # Her segmente voice ekle (speaker bilgisi orijinal segments'te)
+        seg_with_voice = [
+            (s["start"], s["end"], t_tr, voice_for(s["speaker"]))
+            for s, (_, _, t_tr) in zip(segments, seg_tuples)
+        ]
 
         if on_progress:
-            on_progress(80, "Parcalar hazirlaniyor")
+            on_progress(55, "Multi-voice TTS (ElevenLabs)")
+        try:
+            tts_report = _tts_all_multi(seg_with_voice, tmp)
+        finally:
+            for vid in cloned_ids:
+                eleven.delete_voice(vid)
+        if tts_report.failed and on_progress:
+            on_progress(70, tts_report.summary())
+
+        if on_progress:
+            on_progress(80, "Preparing segments")
         valid: list[tuple[float, str]] = []
         for idx, (start, end, _, _) in enumerate(seg_with_voice):
             mp3 = os.path.join(tmp, f"seg_{idx}.mp3")
             if not os.path.exists(mp3) or os.path.getsize(mp3) == 0:
                 continue
             next_start = seg_with_voice[idx + 1][0] if idx + 1 < len(seg_with_voice) else start + (end - start) * 2
-            window = max(0.8, next_start - start)
-            mp3 = _speed_adjust(mp3, window, tmp, idx)
+            # Pencere = orijinal cumle + sonraki sessizlik. Sessizligi trimlemiyoruz;
+            # ElevenLabs'in dogal onset'i Whisper start ile hizali.
+            window = max(0.6, next_start - start)
+            mp3 = _speed_adjust(mp3, window, tmp, idx, hard_cap_sec=window)
             valid.append((start, mp3))
         if not valid:
-            raise RuntimeError("Gecerli TTS segmenti bulunamadi")
+            detail = tts_report.summary()
+            raise RuntimeError(f"No valid TTS segments found. {detail}".strip())
         valid.sort(key=lambda x: x[0])
 
         dub_wav = os.path.join(tmp, "dub.wav")
         if on_progress:
-            on_progress(90, "Ses parcalari birlestiriliyor")
+            on_progress(90, "Merging audio segments")
         _build_dub_track(valid, tmp, dub_wav)
 
         if on_progress:
-            on_progress(96, "Video final hale getiriliyor")
-        subprocess.run([
+            on_progress(96, "Finalizing video")
+        _run([
             "ffmpeg", "-y",
             "-i", video_path,
             "-i", dub_wav,
             "-filter_complex",
             f"[0:a]volume={keep_original_volume}[a0];[a0][1:a]amix=inputs=2:duration=first:dropout_transition=0[aout]",
             "-map", "0:v", "-map", "[aout]",
-            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-            "-shortest",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "192k",
+            "-fflags", "+genpts", "-avoid_negative_ts", "make_zero",
+            "-movflags", "+faststart",
             out_path,
         ], check=True, capture_output=True)
         if on_progress:
-            on_progress(100, "Dublaj tamamlandi")
+            on_progress(100, "Dub complete")

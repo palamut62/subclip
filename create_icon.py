@@ -1,6 +1,6 @@
 """
 create_icon.py
-Reclip ICO dosyasini olusturur ve masaustu kisayolunu gunceller.
+SubClip ICO dosyasini olusturur ve masaustu kisayolunu gunceller.
 Kullanim: python create_icon.py
 """
 
@@ -9,23 +9,22 @@ import subprocess
 from PIL import Image, ImageDraw, ImageFont
 
 BASE     = os.path.dirname(os.path.abspath(__file__))
-ICO_OUT  = os.path.join(BASE, "static", "reclip.ico")
+ICO_OUT  = os.path.join(BASE, "static", "subclip.ico")
 VBS_PATH = os.path.join(BASE, "start_reclip.vbs")
 
-# Renk paleti (uygulama temasina uygun)
-BG     = (42, 42, 38, 255)     # #2a2a26 - koyu zemin
-FG     = (244, 241, 235, 255)  # #f4f1eb - krem beyaz
-ACCENT = (232, 93, 42, 255)    # #e85d2a - turuncu
-WHITE  = (255, 255, 255, 255)
+# Renk paleti (skill: modern-minimal, yuksek kontrast)
+BG      = (37, 99, 235, 255)    # #2563EB
+BG_DARK = (29, 78, 216, 255)    # #1D4ED8
+FG      = (255, 255, 255, 255)  # beyaz
+ACCENT  = (147, 197, 253, 255)  # #93C5FD
 
 
 def find_font(size: int) -> ImageFont.FreeTypeFont:
-    """Windows sistem fontlarindan en iyisini bul (serif tercihli)."""
+    """Windows sistem fontlarindan sans serif bir font bul."""
     candidates = [
-        "C:/Windows/Fonts/georgiab.ttf",    # Georgia Bold - serif, ideal
-        "C:/Windows/Fonts/georgia.ttf",
-        "C:/Windows/Fonts/segoeuib.ttf",    # Segoe UI Bold
+        "C:/Windows/Fonts/segoeuib.ttf",
         "C:/Windows/Fonts/seguisb.ttf",
+        "C:/Windows/Fonts/segoeui.ttf",
         "C:/Windows/Fonts/arialbd.ttf",
         "C:/Windows/Fonts/arial.ttf",
     ]
@@ -37,56 +36,75 @@ def find_font(size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.load_default()
 
 
-def draw_down_arrow(draw: ImageDraw.ImageDraw, cx: int, cy: int, r: int) -> None:
-    """Turuncu daire icinde beyaz asagi ok."""
-    draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=ACCENT)
-    sw = max(2, r // 4)      # ok govde genisligi
-    sh = int(r * 0.52)       # ok govde yuksekligi (yukari dogru)
-    aw = int(r * 0.60)       # ok ucu yari genisligi
-    ah = int(r * 0.48)       # ok ucu yuksekligi
-    # Govde
-    draw.rectangle([cx - sw // 2, cy - sh, cx + sw // 2, cy + 2], fill=WHITE)
-    # Ucgen ok ucu
-    draw.polygon([(cx - aw, cy - 2), (cx + aw, cy - 2), (cx, cy + ah)], fill=WHITE)
+def lerp_color(a: tuple[int, int, int, int], b: tuple[int, int, int, int], t: float) -> tuple[int, int, int, int]:
+    return (
+        int(a[0] + (b[0] - a[0]) * t),
+        int(a[1] + (b[1] - a[1]) * t),
+        int(a[2] + (b[2] - a[2]) * t),
+        int(a[3] + (b[3] - a[3]) * t),
+    )
+
+
+def draw_bg(draw: ImageDraw.ImageDraw, size: int, radius: int) -> None:
+    """Yuksek kontrastli, minimal zemin."""
+    draw.rounded_rectangle([0, 0, size - 1, size - 1], radius=radius, fill=BG)
+    # Ustten hafif vurgu
+    h = max(2, int(size * 0.34))
+    draw.rounded_rectangle(
+        [0, 0, size - 1, h],
+        radius=radius,
+        fill=(BG_DARK[0], BG_DARK[1], BG_DARK[2], 36),
+    )
+
+
+def draw_subtitle_glyph(draw: ImageDraw.ImageDraw, size: int) -> None:
+    """Play + subtitle bar metaforu."""
+    # Sol-orta play ucu
+    tri_w = max(4, int(size * 0.22))
+    tri_h = max(6, int(size * 0.26))
+    cx = int(size * 0.36)
+    cy = int(size * 0.45)
+    tri = [
+        (cx - tri_w // 2, cy - tri_h // 2),
+        (cx - tri_w // 2, cy + tri_h // 2),
+        (cx + tri_w // 2, cy),
+    ]
+    draw.polygon(tri, fill=FG)
+
+    # Sagda iki altyazi satiri
+    bar_x = int(size * 0.50)
+    bar_w = int(size * 0.34)
+    bar_h = max(2, int(size * 0.07))
+    gap = max(2, int(size * 0.05))
+    y1 = int(size * 0.36)
+    y2 = y1 + bar_h + gap
+    r = max(1, bar_h // 2)
+    draw.rounded_rectangle([bar_x, y1, bar_x + bar_w, y1 + bar_h], radius=r, fill=ACCENT)
+    draw.rounded_rectangle([bar_x, y2, bar_x + int(bar_w * 0.82), y2 + bar_h], radius=r, fill=ACCENT)
 
 
 def make_image(size: int) -> Image.Image:
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # Yuvarlatilmis koyu zemin
+    # Yuvarlatilmis mavi zemin
     corner = max(3, int(size * 0.22))
-    draw.rounded_rectangle([0, 0, size - 1, size - 1], radius=corner, fill=BG)
+    draw_bg(draw, size, corner)
 
-    if size >= 48:
-        # Buyuk boyutlar: "R" harfi + turuncu ok rozeti
-        font_size = int(size * 0.62)
-        font = find_font(font_size)
-
-        # "R" metnini sol-yukari hizala (rozetle capismamasi icin)
-        bbox = draw.textbbox((0, 0), "R", font=font)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        tx = int(size * 0.10) - bbox[0]
-        ty = int(size * 0.05) - bbox[1]
-        draw.text((tx, ty), "R", fill=FG, font=font)
-
-        # Sag alt kose - turuncu download rozeti
-        r = int(size * 0.20)
-        ax = size - int(size * 0.17)
-        ay = size - int(size * 0.17)
-        draw_down_arrow(draw, ax, ay, r)
-
+    if size >= 24:
+        draw_subtitle_glyph(draw, size)
     else:
-        # Kucuk boyutlar (16, 32): sadece "R", rozetle ugrastirma
-        font_size = int(size * 0.68)
-        font = find_font(font_size)
-        bbox = draw.textbbox((0, 0), "R", font=font)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        tx = (size - tw) // 2 - bbox[0]
-        ty = (size - th) // 2 - bbox[1]
-        draw.text((tx, ty), "R", fill=FG, font=font)
+        # 16x16 gibi boyutlarda tek, guclu siluet: play
+        tri_w = max(4, int(size * 0.34))
+        tri_h = max(6, int(size * 0.46))
+        cx = size // 2
+        cy = size // 2
+        tri = [
+            (cx - tri_w // 2, cy - tri_h // 2),
+            (cx - tri_w // 2, cy + tri_h // 2),
+            (cx + tri_w // 2, cy),
+        ]
+        draw.polygon(tri, fill=FG)
 
     return img
 
@@ -107,7 +125,7 @@ def create_ico() -> str:
 
 def create_shortcut(ico_path: str) -> None:
     desktop = os.path.join(os.path.expanduser("~"), "Desktop")
-    lnk_path = os.path.join(desktop, "ReClip.lnk")
+    lnk_path = os.path.join(desktop, "SubClip.lnk")
 
     # Path'lerdeki tek tirnaklari temizle
     def q(p): return p.replace("'", "")
@@ -118,7 +136,7 @@ $lnk = $sh.CreateShortcut('{q(lnk_path)}')
 $lnk.TargetPath = 'wscript.exe'
 $lnk.Arguments = '"{q(VBS_PATH)}"'
 $lnk.IconLocation = '{q(ico_path)},0'
-$lnk.Description = 'ReClip - Free Media Downloader and Dubber'
+$lnk.Description = 'SubClip - Free Media Downloader and Subtitler'
 $lnk.WorkingDirectory = '{q(BASE)}'
 $lnk.WindowStyle = 7
 $lnk.Save()
@@ -138,5 +156,5 @@ Write-Output 'done'
 if __name__ == "__main__":
     ico = create_ico()
     create_shortcut(ico)
-    print("\nBitti. Masaustunde 'ReClip' kisayolunu gorebilirsin.")
+    print("\nBitti. Masaustunde 'SubClip' kisayolunu gorebilirsin.")
     print("(Eski kisayol varsa sil, yeni .lnk dosyasini kullan.)")

@@ -1,0 +1,142 @@
+{
+  "app": {
+    "name": "SubClip",
+    "purpose": "Download videos and apply AI-generated subtitles with customizable style and burn-in rendering",
+    "style": {
+      "direction": "modern-minimal",
+      "principles": [
+        "Use one dominant metaphor",
+        "Preserve readability at 16x16",
+        "Avoid text and micro-detail",
+        "Keep gradients subtle",
+        "Maintain high contrast for light and dark surfaces"
+      ],
+      "palette": {
+        "primary": "#2563EB",
+        "accent": null
+      }
+    }
+  },
+  "master_asset": {
+    "format": "png",
+    "size": "1024x1024",
+    "background": "transparent"
+  },
+  "outputs": {
+    "shortcut": {
+      "format": "ico",
+      "sizes": [
+        16,
+        20,
+        24,
+        32,
+        40,
+        48,
+        64,
+        128,
+        256
+      ],
+      "filename": "icon.ico"
+    },
+    "tray": {
+      "format": "png",
+      "sizes": [
+        16,
+        20,
+        24,
+        32
+      ],
+      "variants": [
+        "light",
+        "dark"
+      ],
+      "filenames": [
+        "tray-light.png",
+        "tray-dark.png"
+      ]
+    },
+    "window": {
+      "formats": [
+        "ico",
+        "png"
+      ],
+      "sizes": [
+        16,
+        20,
+        24,
+        32,
+        40,
+        48,
+        64,
+        128,
+        256
+      ],
+      "filenames": [
+        "window-icon.ico",
+        "window-icon.png"
+      ]
+    },
+    "favicon": {
+      "ico_embedded_sizes": [
+        16,
+        32,
+        48
+      ],
+      "png_sizes": [
+        16,
+        32,
+        48,
+        180,
+        192,
+        512
+      ],
+      "filenames": [
+        "favicon.ico",
+        "favicon-16x16.png",
+        "favicon-32x32.png",
+        "favicon-48x48.png",
+        "apple-touch-icon.png",
+        "android-chrome-192x192.png",
+        "android-chrome-512x512.png"
+      ]
+    },
+    "pwa_optional": {
+      "maskable": {
+        "filename": "maskable-512x512.png",
+        "size": 512,
+        "purpose": "maskable"
+      },
+      "monochrome": {
+        "filename": "monochrome-512x512.png",
+        "size": 512,
+        "purpose": "monochrome"
+      }
+    }
+  },
+  "manifest_icons": [
+    {
+      "src": "/icons/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/monochrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "monochrome"
+    }
+  ]
+}

@@ -2,25 +2,24 @@
   <!-- Koyu yuvarlatilmis zemin -->
   <rect x="0" y="0" width="128" height="128" rx="28" fill="#2a2a26"/>
 
-  <!-- "R" harfi - krem beyaz -->
+  <!-- "D" harfi - krem beyaz, blok stil -->
   <!-- Sol dikey govde -->
   <rect x="24" y="18" width="15" height="92" rx="3" fill="#f4f1eb"/>
   <!-- Ust yatay kol -->
-  <rect x="24" y="18" width="52" height="14" rx="3" fill="#f4f1eb"/>
-  <!-- Sag yay yarim daire (bump) - 3 parcayla yaklasik -->
-  <rect x="69" y="18" width="14" height="10" rx="3" fill="#f4f1eb"/>
-  <rect x="75" y="26" width="11" height="24" rx="3" fill="#f4f1eb"/>
-  <rect x="69" y="44" width="14" height="10" rx="3" fill="#f4f1eb"/>
-  <!-- Orta yatay kol -->
-  <rect x="24" y="50" width="56" height="13" rx="3" fill="#f4f1eb"/>
-  <!-- Sag bacak (diagonal) -->
-  <rect x="60" y="63" width="15" height="47" rx="3"
-        transform="rotate(20 67 86)" fill="#f4f1eb"/>
+  <rect x="24" y="18" width="48" height="14" rx="3" fill="#f4f1eb"/>
+  <!-- Alt yatay kol -->
+  <rect x="24" y="96" width="48" height="14" rx="3" fill="#f4f1eb"/>
+  <!-- Sag dikey kavis (D yuvarlagi) -->
+  <rect x="72" y="22" width="14" height="10" rx="3" fill="#f4f1eb"/>
+  <rect x="80" y="30" width="12" height="68" rx="3" fill="#f4f1eb"/>
+  <rect x="72" y="96" width="14" height="10" rx="3" fill="#f4f1eb"/>
 
-  <!-- Turuncu download rozeti - sag alt -->
-  <circle cx="96" cy="96" r="26" fill="#e85d2a"/>
-  <!-- Beyaz asagi ok - govde -->
-  <rect x="91" y="80" width="10" height="15" rx="2.5" fill="white"/>
-  <!-- Beyaz asagi ok - uc -->
-  <polygon points="80,96 112,96 96,114" fill="white"/>
+  <!-- Turuncu mikrofon/dub rozeti - sag alt -->
+  <circle cx="98" cy="98" r="24" fill="#e85d2a"/>
+  <!-- Mikrofon gövdesi -->
+  <rect x="92" y="82" width="12" height="20" rx="6" fill="white"/>
+  <!-- Mikrofon ayağı (U) -->
+  <path d="M86 98 Q86 112 98 112 Q110 112 110 98" stroke="white" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  <!-- Dik çubuk -->
+  <rect x="96.25" y="110" width="3.5" height="6" fill="white"/>
 </svg>

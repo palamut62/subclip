@@ -18,12 +18,36 @@ JOBS_PATH = os.path.join(DOWNLOAD_DIR, "jobs.json")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 jobs: dict[str, dict] = {}
+_NO_WINDOW = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
 
-_MANAGED_KEYS = ["COLAB_URL", "LIPSYNC_URL", "GROQ_API_KEY", "OPENROUTER_API_KEY", "OPENROUTER_MODEL"]
+_MANAGED_KEYS = [
+    "GROQ_API_KEY",
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_MODEL",
+]
+
+
+def _normalize_lang(value: str | None, fallback: str) -> str:
+    raw = (value or "").strip().lower().replace("_", "-")
+    if not raw:
+        return fallback
+    if raw == "auto":
+        return "auto"
+    if len(raw) == 2 and raw.isalpha():
+        return raw
+    if "-" in raw:
+        head = raw.split("-", 1)[0]
+        if len(head) == 2 and head.isalpha():
+            return head
+    return fallback
 
 
 def _ytdlp_cmd() -> list[str]:
     return [sys.executable, "-m", "yt_dlp"]
+
+
+def _subprocess_kwargs() -> dict:
+    return {"creationflags": _NO_WINDOW} if _NO_WINDOW else {}
 
 
 def _now_ts() -> float:
@@ -69,7 +93,7 @@ def _load_jobs() -> None:
         if isinstance(loaded, dict):
             jobs.update(loaded)
             for job in jobs.values():
-                if job.get("status") in {"downloading", "dubbing"}:
+                if job.get("status") in {"downloading", "subtitling"}:
                     job["status"] = "error"
                     job["stage"] = "error"
                     job["error"] = "Uygulama yeniden baslatildi, islem yarim kaldi"
@@ -148,7 +172,7 @@ def _mask(v: str) -> str:
 
 
 def _run_download_process(job: dict, cmd: list[str]) -> list[str]:
-    _update_job(job, status="downloading", stage="download", phase_message="Indirme hazirlaniyor", progress_percent=0)
+    _update_job(job, status="downloading", stage="download", phase_message="Preparing download", progress_percent=0)
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -157,6 +181,7 @@ def _run_download_process(job: dict, cmd: list[str]) -> list[str]:
         bufsize=1,
         universal_newlines=True,
         errors="replace",
+        **_subprocess_kwargs(),
     )
     progress_lines: list[str] = []
     assert proc.stdout is not None
@@ -211,40 +236,15 @@ def _finalize_filename(job: dict, chosen: str, suffix: str = "") -> None:
     _save_jobs()
 
 
-def _do_fast_dub(job: dict, video_path: str, out_path: str, src_lang: str, tgt_lang: str,
-                 gender: str, multi_speaker: bool) -> None:
-    from dub import analyze_speakers, dub_video, finalize_multi_voice
-
-    if multi_speaker:
-        import tempfile as _tf
-        workdir = _tf.mkdtemp(prefix=f"ms_{job['job_id']}_")
-        analysis = analyze_speakers(
-            video_path, workdir, src_lang=src_lang,
-            on_progress=lambda p, m: _update_job(job, status="dubbing", stage="dub_analyze",
-                                                 phase_message=m, progress_percent=p),
-        )
-        job["ms_analysis_dir"] = workdir
-        job["ms_analysis"] = {"segments": analysis["segments"], "source_lang": analysis["source_lang"]}
-        job["speakers"] = analysis["speakers"]
-        job["ms_tgt_lang"] = tgt_lang
-        job["ms_out_path"] = out_path
-        job["ms_video_path"] = video_path
-        _update_job(job, status="awaiting_voices", stage="awaiting_voices",
-                    phase_message="Konusmaci atamasi bekleniyor", progress_percent=30)
-        return
-
-    dub_video(
-        video_path, out_path,
-        src_lang=src_lang, tgt_lang=tgt_lang, gender=gender,
-        on_progress=lambda p, msg: _update_job(job, status="dubbing", stage="dub_fast",
-                                               phase_message=msg, progress_percent=p),
-    )
-
-
 def run_download(job_id: str, url: str, format_choice: str, format_id: str | None,
-                 dub: bool = False, dub_engine: str = "fast", src_lang: str = "en",
-                 tgt_lang: str = "tr", gender: str = "female",
-                 multi_speaker: bool = False) -> None:
+                 src_lang: str = "auto",
+                 subtitle: bool = False, subtitle_mode: str = "sidecar",
+                 subtitle_tgt_lang: str = "tr", subtitle_font_size: int = 22,
+                 subtitle_font_family: str = "Arial",
+                 subtitle_color: str = "#FFFFFF",
+                 subtitle_outline_color: str = "#000000",
+                 subtitle_bg_color: str = "#000000",
+                 subtitle_bg_opacity: int = 0) -> None:
     job = jobs[job_id]
     out_template = os.path.join(DOWNLOAD_DIR, f"{job_id}.%(ext)s")
 
@@ -261,60 +261,47 @@ def run_download(job_id: str, url: str, format_choice: str, format_id: str | Non
         _run_download_process(job, cmd)
         chosen = _find_output_file(job_id, format_choice)
 
-        if dub and format_choice != "audio" and chosen.endswith(".mp4"):
+        # Indirme bittikten sonra altyazi istendiyse uygula
+        if subtitle and format_choice != "audio" and chosen.endswith(".mp4"):
             try:
-                _update_job(job, status="dubbing", stage="dub_prepare", phase_message="Dublaj baslatiliyor", progress_percent=4)
-                dubbed_path = os.path.join(DOWNLOAD_DIR, f"{job_id}_tr.mp4")
-                job["job_id"] = job_id
-                if multi_speaker and not dub_engine.startswith("krillin"):
-                    _do_fast_dub(job, chosen, dubbed_path, src_lang, tgt_lang, gender, multi_speaker=True)
-                    return
-                if dub_engine.startswith("krillin"):
-                    from krillin_client import dub_video as krillin_dub
+                from subtitle import generate_subtitles
 
-                    llm = "ollama" if dub_engine == "krillin_ollama" else "deepseek"
-                    krillin_dub(
-                        chosen,
-                        dubbed_path,
-                        origin_lang=src_lang,
-                        target_lang=tgt_lang,
-                        llm=llm,
-                        gender=gender,
-                        on_progress=lambda p: _update_job(
-                            job,
-                            status="dubbing",
-                            stage="dub_krillin",
-                            phase_message="KrillinAI dublaj yapiyor",
-                            progress_percent=p,
-                        ),
-                    )
-                else:
-                    from dub import dub_video
+                _update_job(job, status="subtitling", stage="sub_prepare",
+                            phase_message="Preparing subtitles", progress_percent=3)
+                base_name = os.path.splitext(os.path.basename(chosen))[0]
+                lang_tag = subtitle_tgt_lang
+                srt_path = os.path.join(DOWNLOAD_DIR, f"{base_name}_{lang_tag}.srt")
+                burned_path = os.path.join(DOWNLOAD_DIR, f"{base_name}_sub_{lang_tag}.mp4") \
+                    if subtitle_mode in ("burn", "both") else None
 
-                    dub_video(
-                        chosen,
-                        dubbed_path,
-                        src_lang=src_lang,
-                        tgt_lang=tgt_lang,
-                        gender=gender,
-                        on_progress=lambda p, msg: _update_job(
-                            job,
-                            status="dubbing",
-                            stage="dub_fast",
-                            phase_message=msg,
-                            progress_percent=p,
-                        ),
-                    )
-                try:
-                    os.remove(chosen)
-                except OSError:
-                    pass
-                chosen = dubbed_path
+                sub_translate = src_lang != subtitle_tgt_lang and src_lang != "auto"
+                generate_subtitles(
+                    chosen, srt_path,
+                    burned_out=burned_path,
+                    src_lang=src_lang, tgt_lang=subtitle_tgt_lang,
+                    translate=sub_translate, font_size=subtitle_font_size,
+                    font_name=subtitle_font_family,
+                    text_color=subtitle_color,
+                    outline_color=subtitle_outline_color,
+                    bg_color=subtitle_bg_color,
+                    bg_opacity=subtitle_bg_opacity,
+                    on_progress=lambda p, msg: _update_job(
+                        job, status="subtitling", stage="sub_run",
+                        phase_message=msg, progress_percent=p,
+                    ),
+                )
+                job["subtitle_file"] = srt_path
+                if burned_path and os.path.exists(burned_path):
+                    try:
+                        os.remove(chosen)
+                    except OSError:
+                        pass
+                    chosen = burned_path
             except Exception as e:
-                _update_job(job, status="error", stage="error", error=f"Dublaj hatasi: {e}")
+                _update_job(job, status="error", stage="error", error=f"Subtitle error: {e}")
                 return
 
-        final_stage = "dub_done" if dub and format_choice != "audio" else "download_done"
+        final_stage = "sub_done" if subtitle and format_choice != "audio" else "download_done"
         _update_job(job, status="done", stage=final_stage, phase_message="Tamamlandi", progress_percent=100)
         job["file"] = chosen
         _finalize_filename(job, chosen)
@@ -322,76 +309,92 @@ def run_download(job_id: str, url: str, format_choice: str, format_id: str | Non
         _update_job(job, status="error", stage="error", error=str(e))
 
 
-def run_dub_existing(job_id: str, dub_engine: str = "fast", src_lang: str = "en", tgt_lang: str = "tr", gender: str = "female") -> None:
+def run_subtitle(job_id: str, mode: str = "sidecar", src_lang: str = "auto",
+                 tgt_lang: str = "tr", translate: bool = True, font_size: int = 22,
+                 font_name: str = "Arial", text_color: str = "#FFFFFF",
+                 outline_color: str = "#000000", bg_color: str = "#000000",
+                 bg_opacity: int = 0, reuse_existing_srt: bool = False) -> None:
+    """mode: 'sidecar' (sadece SRT), 'burn' (videoya goM), 'both' (ikisi de)."""
     job = jobs[job_id]
     src_path = job.get("file", "")
     if not src_path or not os.path.exists(src_path):
-        _update_job(job, status="error", stage="error", error="Kaynak dosya bulunamadi")
+        _update_job(job, status="error", stage="error", error="Source file not found")
+        return
+    if not src_path.lower().endswith(".mp4"):
+        _update_job(job, status="error", stage="error", error="Altyazi sadece video icin destekleniyor")
         return
 
     try:
-        _update_job(job, status="dubbing", stage="dub_prepare", phase_message="Dublaj hazirlaniyor", progress_percent=3)
-        working_src = src_path
-        if not src_path.lower().endswith(".mp4"):
-            converted = os.path.join(DOWNLOAD_DIR, f"{job_id}_source.mp4")
-            _update_job(job, status="dubbing", stage="dub_prepare", phase_message="Video uyumlu formata cevriliyor", progress_percent=8)
-            subprocess.run(
-                [
-                    "ffmpeg", "-y", "-i", src_path,
-                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-                    "-c:a", "aac", "-b:a", "192k",
-                    converted,
-                ],
-                check=True,
-                capture_output=True,
-            )
-            working_src = converted
+        from subtitle import burn_subtitles_into_video, generate_subtitles
+
+        _update_job(job, status="subtitling", stage="sub_prepare",
+                    phase_message="Preparing subtitles", progress_percent=3)
+
+        if reuse_existing_srt:
+            srt_path = job.get("subtitle_file", "")
+            if not srt_path or not os.path.exists(srt_path):
+                _update_job(job, status="error", stage="error", error="Mevcut SRT bulunamadi")
+                return
+
+            if mode in ("burn", "both"):
+                base_name = os.path.splitext(os.path.basename(src_path))[0]
+                burned_path = os.path.join(DOWNLOAD_DIR, f"{base_name}_sub_styled.mp4")
+                _update_job(job, status="subtitling", stage="sub_run",
+                            phase_message="Applying subtitle style", progress_percent=70)
+                burn_subtitles_into_video(
+                    src_path,
+                    srt_path,
+                    burned_path,
+                    font_size=font_size,
+                    font_name=font_name,
+                    text_color=text_color,
+                    outline_color=outline_color,
+                    bg_color=bg_color,
+                    bg_opacity=bg_opacity,
+                )
+                job["file"] = burned_path
+                _finalize_filename(job, burned_path, suffix="_sub_styled")
+
+            _update_job(job, status="done", stage="sub_done",
+                        phase_message="Subtitles complete", progress_percent=100)
+            return
 
         base_name = os.path.splitext(os.path.basename(src_path))[0]
-        dubbed_path = os.path.join(DOWNLOAD_DIR, f"{base_name}_dub_{tgt_lang}.mp4")
+        lang_tag = tgt_lang if translate else (src_lang if src_lang != "auto" else "src")
+        srt_path = os.path.join(DOWNLOAD_DIR, f"{base_name}_{lang_tag}.srt")
+        burned_path = None
+        if mode in ("burn", "both"):
+            burned_path = os.path.join(DOWNLOAD_DIR, f"{base_name}_sub_{lang_tag}.mp4")
 
-        if dub_engine.startswith("krillin"):
-            from krillin_client import dub_video as krillin_dub
+        generate_subtitles(
+            src_path,
+            srt_path,
+            burned_out=burned_path,
+            src_lang=src_lang,
+            tgt_lang=tgt_lang,
+            translate=translate,
+            font_size=font_size,
+            font_name=font_name,
+            text_color=text_color,
+            outline_color=outline_color,
+            bg_color=bg_color,
+            bg_opacity=bg_opacity,
+            on_progress=lambda p, msg: _update_job(
+                job, status="subtitling", stage="sub_run",
+                phase_message=msg, progress_percent=p,
+            ),
+        )
 
-            llm = "ollama" if dub_engine == "krillin_ollama" else "deepseek"
-            krillin_dub(
-                working_src,
-                dubbed_path,
-                origin_lang=src_lang,
-                target_lang=tgt_lang,
-                llm=llm,
-                gender=gender,
-                on_progress=lambda p: _update_job(
-                    job,
-                    status="dubbing",
-                    stage="dub_krillin",
-                    phase_message="KrillinAI dublaj yapiyor",
-                    progress_percent=p,
-                ),
-            )
-        else:
-            from dub import dub_video
+        job["subtitle_file"] = srt_path
+        if burned_path and os.path.exists(burned_path):
+            # Gomulu videoyu yeni "ana dosya" yap (kullanici Save'de bunu indirir)
+            job["file"] = burned_path
+            _finalize_filename(job, burned_path, suffix=f"_sub_{lang_tag}")
 
-            dub_video(
-                working_src,
-                dubbed_path,
-                src_lang=src_lang,
-                tgt_lang=tgt_lang,
-                gender=gender,
-                on_progress=lambda p, msg: _update_job(
-                    job,
-                    status="dubbing",
-                    stage="dub_fast",
-                    phase_message=msg,
-                    progress_percent=p,
-                ),
-            )
-
-        _update_job(job, status="done", stage="dub_done", phase_message="Dublaj tamamlandi", progress_percent=100)
-        job["file"] = dubbed_path
-        _finalize_filename(job, dubbed_path, suffix=f"_dub_{tgt_lang}")
+        _update_job(job, status="done", stage="sub_done",
+                    phase_message="Subtitles complete", progress_percent=100)
     except Exception as e:
-        _update_job(job, status="error", stage="error", error=f"Dublaj hatasi: {e}")
+        _update_job(job, status="error", stage="error", error=f"Subtitle error: {e}")
 
 
 _apply_env(_read_env())
@@ -400,7 +403,11 @@ _load_jobs()
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    from flask import make_response
+    resp = make_response(render_template("index.html"))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
 
 
 @app.route("/api/settings", methods=["GET"])
@@ -409,7 +416,7 @@ def get_settings():
     result = {}
     for k in _MANAGED_KEYS:
         v = env.get(k, os.environ.get(k, ""))
-        shown = v if k in ("COLAB_URL", "LIPSYNC_URL") else (_mask(v) if v else "")
+        shown = v if k == "OPENROUTER_MODEL" else (_mask(v) if v else "")
         result[k] = {"masked": shown, "set": bool(v)}
     return jsonify(result)
 
@@ -418,11 +425,16 @@ def get_settings():
 def save_settings():
     data = request.json or {}
     to_save = {}
+    clearable_blank_keys = {
+        "OPENROUTER_MODEL",
+    }
     for k in _MANAGED_KEYS:
         if k not in data:
             continue
         v = data.get(k, "").strip()
-        if not v or "*" in v:
+        if "*" in v:
+            continue
+        if not v and k not in clearable_blank_keys:
             continue
         to_save[k] = v
     if to_save:
@@ -450,7 +462,7 @@ def get_info():
 
     cmd = _ytdlp_cmd() + ["--no-playlist", "-j", url]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, **_subprocess_kwargs())
         if result.returncode != 0:
             return jsonify({"error": result.stderr.strip().split("\n")[-1]}), 400
 
@@ -488,12 +500,16 @@ def start_download():
     format_choice = data.get("format", "video")
     format_id = data.get("format_id")
     title = data.get("title", "")
-    dub = bool(data.get("dub"))
-    dub_engine = data.get("dub_engine", "fast")
-    src_lang = data.get("src_lang", "en")
-    tgt_lang = data.get("tgt_lang", "tr")
-    gender = data.get("gender", "female")
-    multi_speaker = bool(data.get("multi_speaker"))
+    src_lang = _normalize_lang(data.get("src_lang", "en"), "auto")
+    subtitle = bool(data.get("subtitle"))
+    subtitle_mode = data.get("subtitle_mode", "sidecar")
+    subtitle_tgt_lang = data.get("subtitle_tgt_lang", "tr")
+    subtitle_font_size = int(data.get("subtitle_font_size", 22))
+    subtitle_font_family = str(data.get("subtitle_font_family", "Arial"))
+    subtitle_color = str(data.get("subtitle_color", "#FFFFFF"))
+    subtitle_outline_color = str(data.get("subtitle_outline_color", "#000000"))
+    subtitle_bg_color = str(data.get("subtitle_bg_color", "#000000"))
+    subtitle_bg_opacity = int(data.get("subtitle_bg_opacity", 0))
 
     if not url:
         return jsonify({"error": "No URL provided"}), 400
@@ -516,38 +532,113 @@ def start_download():
 
     thread = threading.Thread(
         target=run_download,
-        args=(job_id, url, format_choice, format_id, dub, dub_engine, src_lang, tgt_lang, gender, multi_speaker),
+        args=(job_id, url, format_choice, format_id, src_lang,
+              subtitle, subtitle_mode, subtitle_tgt_lang, subtitle_font_size,
+              subtitle_font_family, subtitle_color, subtitle_outline_color,
+              subtitle_bg_color, subtitle_bg_opacity),
     )
     thread.daemon = True
     thread.start()
     return jsonify({"job_id": job_id})
 
 
-@app.route("/api/dub/<job_id>", methods=["POST"])
-def dub_existing_file(job_id):
+@app.route("/api/subtitle/<job_id>", methods=["POST"])
+def subtitle_existing(job_id):
     job = jobs.get(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
-    if job.get("status") != "done":
-        return jsonify({"error": "Job tamamlanmadi"}), 400
     src_file = job.get("file", "")
+    # Disk'te dosya varsa job state ne olursa olsun devam et
     if not src_file or not os.path.exists(src_file):
-        return jsonify({"error": "Kaynak dosya bulunamadi"}), 400
+        candidates = glob.glob(os.path.join(DOWNLOAD_DIR, f"{job_id}*.mp4"))
+        if candidates:
+            src_file = max(candidates, key=os.path.getmtime)
+            job["file"] = src_file
+        else:
+            return jsonify({"error": "Source file not found"}), 400
+    if not src_file.lower().endswith(".mp4"):
+        return jsonify({"error": "Altyazi sadece MP4 icin destekleniyor"}), 400
 
     data = request.json or {}
-    dub_engine = data.get("dub_engine", "fast")
-    src_lang = data.get("src_lang", "en")
-    tgt_lang = data.get("tgt_lang", "tr")
-    gender = data.get("gender", "female")
+    mode = data.get("mode", "sidecar")
+    if mode not in ("sidecar", "burn", "both"):
+        return jsonify({"error": "Gecersiz mode"}), 400
+    src_lang = _normalize_lang(data.get("src_lang", "auto"), "auto")
+    tgt_lang = _normalize_lang(data.get("tgt_lang", "tr"), "tr")
+    translate = bool(data.get("translate", True))
+    font_size = int(data.get("font_size", 22))
+    font_name = str(data.get("font_name", "Arial"))
+    text_color = str(data.get("text_color", "#FFFFFF"))
+    outline_color = str(data.get("outline_color", "#000000"))
+    bg_color = str(data.get("bg_color", "#000000"))
+    bg_opacity = int(data.get("bg_opacity", 0))
+    restyle_only = bool(data.get("restyle_only", False))
 
     now = _now_ts()
+    job.pop("error", None)
     job["started_at"] = now
     job["updated_at"] = now
+    job["status"] = "subtitling"
+    job["stage"] = "sub_prepare"
+    job["phase_message"] = "Preparing subtitles"
+    job["progress_percent"] = 0
     _save_jobs()
-    thread = threading.Thread(target=run_dub_existing, args=(job_id, dub_engine, src_lang, tgt_lang, gender))
+    thread = threading.Thread(
+        target=run_subtitle,
+        args=(job_id, mode, src_lang, tgt_lang, translate, font_size,
+              font_name, text_color, outline_color, bg_color, bg_opacity, restyle_only),
+    )
     thread.daemon = True
     thread.start()
     return jsonify({"job_id": job_id})
+
+
+@app.route("/api/subtitle/<job_id>", methods=["DELETE"])
+def delete_subtitle(job_id):
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Not found"}), 404
+    srt = job.pop("subtitle_file", None)
+    if srt and os.path.exists(srt):
+        try:
+            os.remove(srt)
+        except OSError:
+            pass
+    return jsonify({"ok": True})
+
+
+@app.route("/api/subtitle-file/<job_id>")
+def download_subtitle(job_id):
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Not found"}), 404
+    srt = job.get("subtitle_file", "")
+    if not srt or not os.path.exists(srt):
+        return jsonify({"error": "SRT yok"}), 404
+    base = os.path.splitext(job.get("filename") or os.path.basename(srt))[0]
+    return send_file(srt, as_attachment=True, download_name=f"{base}.srt")
+
+
+@app.route("/api/subtitle-vtt/<job_id>")
+def stream_subtitle_vtt(job_id):
+    """HTML5 <track> icin SRT'yi WebVTT'ye cevirip dondur."""
+    from flask import Response
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Not found"}), 404
+    srt = job.get("subtitle_file", "")
+    if not srt or not os.path.exists(srt):
+        return jsonify({"error": "SRT yok"}), 404
+    with open(srt, encoding="utf-8") as f:
+        body = f.read()
+    # SRT -> VTT: zaman damgalarinda ',' yerine '.', basa WEBVTT
+    body = re.sub(
+        r"(\d{2}:\d{2}:\d{2}),(\d{3})",
+        r"\1.\2",
+        body,
+    )
+    vtt = "WEBVTT\n\n" + body
+    return Response(vtt, mimetype="text/vtt")
 
 
 @app.route("/api/status/<job_id>")
@@ -563,69 +654,11 @@ def check_status(job_id):
         "error": job.get("error"),
         "filename": job.get("filename"),
         "format": job.get("format"),
-        "speakers": job.get("speakers") if job.get("status") == "awaiting_voices" else None,
+        "has_subtitle": bool(job.get("subtitle_file") and os.path.exists(job.get("subtitle_file", ""))),
         "started_at": job.get("started_at"),
         "updated_at": job.get("updated_at"),
         "elapsed_sec": _elapsed_seconds(job),
     })
-
-
-@app.route("/api/speakers/<job_id>")
-def get_speakers(job_id):
-    job = jobs.get(job_id)
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
-    if job.get("status") != "awaiting_voices":
-        return jsonify({"error": "Job not awaiting voices"}), 400
-    return jsonify({
-        "speakers": job.get("speakers", []),
-        "segment_count": len(job.get("ms_analysis", {}).get("segments", [])),
-    })
-
-
-def _resume_multi_voice(job_id: str, voices_map: dict) -> None:
-    job = jobs[job_id]
-    try:
-        from dub import finalize_multi_voice
-
-        finalize_multi_voice(
-            job["ms_video_path"],
-            job["ms_out_path"],
-            job["ms_analysis"],
-            voices_map,
-            tgt_lang=job.get("ms_tgt_lang", "tr"),
-            on_progress=lambda p, msg: _update_job(
-                job, status="dubbing", stage="dub_ms_finalize",
-                phase_message=msg, progress_percent=p,
-            ),
-        )
-        try:
-            if os.path.exists(job["ms_video_path"]) and job["ms_video_path"] != job["ms_out_path"]:
-                os.remove(job["ms_video_path"])
-        except OSError:
-            pass
-        _update_job(job, status="done", stage="dub_done",
-                    phase_message="Tamamlandi", progress_percent=100)
-        job["file"] = job["ms_out_path"]
-        _finalize_filename(job, job["ms_out_path"])
-    except Exception as e:
-        _update_job(job, status="error", stage="error", error=f"Dublaj hatasi: {e}")
-
-
-@app.route("/api/assign-voices/<job_id>", methods=["POST"])
-def assign_voices(job_id):
-    job = jobs.get(job_id)
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
-    if job.get("status") != "awaiting_voices":
-        return jsonify({"error": "Job not awaiting voices"}), 400
-    voices_map = (request.json or {}).get("voices", {})
-    if not isinstance(voices_map, dict) or not voices_map:
-        return jsonify({"error": "voices dict gerekli"}), 400
-    thread = threading.Thread(target=_resume_multi_voice, args=(job_id, voices_map))
-    thread.daemon = True
-    thread.start()
-    return jsonify({"ok": True})
 
 
 @app.route("/api/jobs")
@@ -653,6 +686,7 @@ def list_jobs():
             "error": job.get("error", ""),
             "url": job.get("url", ""),
             "created_at": job.get("created_at", 0),
+            "has_subtitle": bool(job.get("subtitle_file") and os.path.exists(job.get("subtitle_file", ""))),
         })
     out.sort(key=lambda j: j["created_at"], reverse=True)
     return jsonify(out)
