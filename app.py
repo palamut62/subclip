@@ -259,6 +259,9 @@ def run_download(job_id: str, url: str, format_choice: str, format_id: str | Non
     try:
         _run_download_process(job, cmd)
         chosen = _find_output_file(job_id, format_choice)
+        if chosen.lower().endswith(".mp4"):
+            # Altyazi stilini tekrar uygulayabilmek icin temiz kaynagi sakla.
+            job["source_file"] = chosen
 
         # Indirme bittikten sonra altyazi istendiyse uygula
         if subtitle and format_choice != "audio" and chosen.endswith(".mp4"):
@@ -266,7 +269,7 @@ def run_download(job_id: str, url: str, format_choice: str, format_id: str | Non
                 from subtitle import generate_subtitles
 
                 _update_job(job, status="subtitling", stage="sub_prepare",
-                            phase_message="Preparing subtitles", progress_percent=3)
+                            phase_message="Preparing subtitles", progress_percent=96)
                 base_name = os.path.splitext(os.path.basename(chosen))[0]
                 lang_tag = subtitle_tgt_lang
                 srt_path = os.path.join(DOWNLOAD_DIR, f"{base_name}_{lang_tag}.srt")
@@ -274,6 +277,10 @@ def run_download(job_id: str, url: str, format_choice: str, format_id: str | Non
                     if subtitle_mode in ("burn", "both") else None
 
                 sub_translate = src_lang != subtitle_tgt_lang and src_lang != "auto"
+                def _subtitle_pipeline_progress(p: float) -> float:
+                    clamped = max(0.0, min(100.0, float(p)))
+                    return 96.0 + (clamped * 4.0 / 100.0)
+
                 generate_subtitles(
                     chosen, srt_path,
                     burned_out=burned_path,
@@ -286,15 +293,11 @@ def run_download(job_id: str, url: str, format_choice: str, format_id: str | Non
                     bg_opacity=subtitle_bg_opacity,
                     on_progress=lambda p, msg: _update_job(
                         job, status="subtitling", stage="sub_run",
-                        phase_message=msg, progress_percent=p,
+                        phase_message=msg, progress_percent=_subtitle_pipeline_progress(p),
                     ),
                 )
                 job["subtitle_file"] = srt_path
                 if burned_path and os.path.exists(burned_path):
-                    try:
-                        os.remove(chosen)
-                    except OSError:
-                        pass
                     chosen = burned_path
             except Exception as e:
                 _update_job(job, status="error", stage="error", error=f"Subtitle error: {e}")
@@ -303,6 +306,8 @@ def run_download(job_id: str, url: str, format_choice: str, format_id: str | Non
         final_stage = "sub_done" if subtitle and format_choice != "audio" else "download_done"
         _update_job(job, status="done", stage=final_stage, phase_message="Tamamlandi", progress_percent=100)
         job["file"] = chosen
+        if chosen.lower().endswith(".mp4") and not job.get("source_file"):
+            job["source_file"] = chosen
         _finalize_filename(job, chosen)
     except Exception as e:
         _update_job(job, status="error", stage="error", error=str(e))
@@ -315,7 +320,10 @@ def run_subtitle(job_id: str, mode: str = "sidecar", src_lang: str = "auto",
                  bg_opacity: int = 0, reuse_existing_srt: bool = False) -> None:
     """mode: 'sidecar' (sadece SRT), 'burn' (videoya goM), 'both' (ikisi de)."""
     job = jobs[job_id]
-    src_path = job.get("file", "")
+    src_path = job.get("source_file") or job.get("file", "")
+    if (not src_path or not os.path.exists(src_path)) and job.get("file"):
+        # Eski job'lar icin fallback.
+        src_path = job.get("file", "")
     if not src_path or not os.path.exists(src_path):
         _update_job(job, status="error", stage="error", error="Source file not found")
         return
@@ -351,6 +359,7 @@ def run_subtitle(job_id: str, mode: str = "sidecar", src_lang: str = "auto",
                     bg_color=bg_color,
                     bg_opacity=bg_opacity,
                 )
+                job["source_file"] = src_path
                 job["file"] = burned_path
                 _finalize_filename(job, burned_path, suffix="_sub_styled")
 
@@ -387,6 +396,7 @@ def run_subtitle(job_id: str, mode: str = "sidecar", src_lang: str = "auto",
         job["subtitle_file"] = srt_path
         if burned_path and os.path.exists(burned_path):
             # Gomulu videoyu yeni "ana dosya" yap (kullanici Save'de bunu indirir)
+            job["source_file"] = src_path
             job["file"] = burned_path
             _finalize_filename(job, burned_path, suffix=f"_sub_{lang_tag}")
 
@@ -546,13 +556,15 @@ def subtitle_existing(job_id):
     job = jobs.get(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
-    src_file = job.get("file", "")
+    src_file = job.get("source_file") or job.get("file", "")
     # Disk'te dosya varsa job state ne olursa olsun devam et
     if not src_file or not os.path.exists(src_file):
         candidates = glob.glob(os.path.join(DOWNLOAD_DIR, f"{job_id}*.mp4"))
         if candidates:
             src_file = max(candidates, key=os.path.getmtime)
             job["file"] = src_file
+            if src_file.lower().endswith(".mp4") and not job.get("source_file"):
+                job["source_file"] = src_file
         else:
             return jsonify({"error": "Source file not found"}), 400
     if not src_file.lower().endswith(".mp4"):

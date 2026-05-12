@@ -1334,7 +1334,7 @@ async function addSubtitle(idx) {
       let actionHtml = '';
       const phaseText = c.phaseMessage || '';
       const progressText = (c.progressPercent != null && c.status !== 'done' && c.status !== 'ready')
-        ? ` %${Math.round(c.progressPercent)}`
+        ? ` ${Math.round(c.progressPercent)}%`
         : '';
       if (c.status === 'ready') {
         actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Download</button>${qualityChips}`;
@@ -1511,12 +1511,14 @@ async function addSubtitle(idx) {
 
     function pollCard(idx) {
       const c = cardData[idx];
+      if (c._pollInterval) clearInterval(c._pollInterval);
       const iv = setInterval(async () => {
         try {
           const res = await fetch(`/api/status/${c.jobId}`);
           const data = await res.json();
           if (!res.ok || data.error) {
             clearInterval(iv);
+            c._pollInterval = null;
             c.status = 'error';
             c.error = data.error || `Status check failed (${res.status})`;
             renderCard(idx);
@@ -1527,6 +1529,7 @@ async function addSubtitle(idx) {
           c.elapsedSec = data.elapsed_sec;
           if (data.status === 'done') {
             clearInterval(iv);
+            c._pollInterval = null;
             c.status = 'done';
             c.filename = data.filename;
             c.format = data.format;
@@ -1534,21 +1537,25 @@ async function addSubtitle(idx) {
             c.hasSubtitle = !!data.has_subtitle;
             c.fromHistory = true;
             renderCard(idx);
-          } else if (data.status === 'subtitling') {
-            if (c.status !== 'subtitling') { c.status = 'subtitling'; renderCard(idx); }
           } else if (data.status === 'error') {
             clearInterval(iv);
+            c._pollInterval = null;
             c.status = 'error';
             c.error = data.error;
+            renderCard(idx);
+          } else {
+            c.status = data.status || c.status;
             renderCard(idx);
           }
         } catch {
           clearInterval(iv);
+          c._pollInterval = null;
           c.status = 'error';
           c.error = 'Lost connection to server';
           renderCard(idx);
         }
       }, 1000);
+      c._pollInterval = iv;
     }
 
     function saveCard(idx) {
