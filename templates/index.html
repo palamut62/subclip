@@ -1431,8 +1431,9 @@ async function addSubtitle(idx) {
         ? `<div class="card-preview"><video controls preload="metadata" src="/api/media/${c.jobId}">${trackHtml}</video></div>`
         : '';
 
+      const thumbBlock = (c.status === 'done') ? '' : `<div class="card-thumb">${thumbHtml}</div>`;
       el.innerHTML = `
-        <div class="card-thumb">${thumbHtml}</div>
+        ${thumbBlock}
         <div class="card-body">
           <div class="card-title">${esc(c.title || 'Untitled')}</div>
           <div class="card-meta">${esc(c.uploader)}${c.duration ? ' &middot; ' + fmtDur(c.duration) : ''}</div>
@@ -1534,13 +1535,22 @@ async function addSubtitle(idx) {
             c.format = data.format;
             if (data.has_subtitle && !c.hasSubtitle) c.subtitleVer = Date.now();
             c.hasSubtitle = !!data.has_subtitle;
+            c.isBurned = !!data.is_burned;
             c.fromHistory = true;
             renderCard(idx);
+            if (c._autoSaveAfterBurn) {
+              c._autoSaveAfterBurn = false;
+              const a = document.createElement('a');
+              a.href = `/api/file/${c.jobId}`;
+              a.download = c.filename || '';
+              a.click();
+            }
           } else if (data.status === 'error') {
             clearInterval(iv);
             c._pollInterval = null;
             c.status = 'error';
             c.error = data.error;
+            c._autoSaveAfterBurn = false;
             renderCard(idx);
           } else {
             c.status = data.status || c.status;
@@ -1551,15 +1561,60 @@ async function addSubtitle(idx) {
           c._pollInterval = null;
           c.status = 'error';
           c.error = 'Lost connection to server';
+          c._autoSaveAfterBurn = false;
           renderCard(idx);
         }
       }, 1000);
       c._pollInterval = iv;
     }
 
-    function saveCard(idx) {
+    async function saveCard(idx) {
       const c = cardData[idx];
       if (!c.jobId) return;
+
+      const needsBurn = c.hasSubtitle && !c.isBurned && c.format !== 'audio';
+      if (needsBurn) {
+        const style = cardSubtitleStyle(idx);
+        c.status = 'subtitling';
+        c.phaseMessage = 'Burning subtitles into video';
+        c.progressPercent = 0;
+        c.elapsedSec = 0;
+        c.error = null;
+        c._autoSaveAfterBurn = true;
+        renderCard(idx);
+        try {
+          const res = await fetch(`/api/subtitle/${c.jobId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              mode: 'burn',
+              restyle_only: true,
+              font_size: style.font_size,
+              font_name: style.font_name,
+              text_color: style.text_color,
+              outline_color: style.outline_color,
+              bg_color: style.bg_color,
+              bg_opacity: style.bg_opacity,
+            }),
+          });
+          const data = await res.json();
+          if (data.error) {
+            c.status = 'error';
+            c.error = data.error;
+            c._autoSaveAfterBurn = false;
+            renderCard(idx);
+            return;
+          }
+          pollCard(idx);
+        } catch (err) {
+          c.status = 'error';
+          c.error = err.message;
+          c._autoSaveAfterBurn = false;
+          renderCard(idx);
+        }
+        return;
+      }
+
       const a = document.createElement('a');
       a.href = `/api/file/${c.jobId}`;
       a.download = c.filename || '';
@@ -1608,6 +1663,7 @@ async function addSubtitle(idx) {
             format: j.format,
             requestFormat: j.format,
             hasSubtitle: !!j.has_subtitle,
+            isBurned: !!j.is_burned,
             fromHistory: true,
           });
           renderCard(cardData.length - 1);

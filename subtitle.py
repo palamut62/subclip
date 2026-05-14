@@ -56,8 +56,11 @@ def _audio_duration(path: str) -> float | None:
 
 
 def _transcribe_openrouter(wav_path: str, src_lang: str) -> tuple[list, str]:
-    """OpenRouter STT endpoint'i ile coarse segmentli transkripsiyon.
-    Endpoint text dondurdugu icin, zamanlamayi chunk penceresiyle kurar."""
+    """OpenRouter STT ile transkripsiyon.
+
+    Whisper'in verbose_json formatini ister; donen `segments[].start/end`
+    chunk offset'i ile toplanarak gercek zaman damgalari kurulur.
+    Segment dizisi yoksa chunk penceresine geri duser (fallback)."""
     api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY is not set.")
@@ -109,6 +112,8 @@ def _transcribe_openrouter(wav_path: str, src_lang: str) -> tuple[list, str]:
                     "data": b64,
                     "format": "flac",
                 },
+                "response_format": "verbose_json",
+                "timestamp_granularities": ["segment"],
             }
             if src_lang != "auto":
                 payload["language"] = src_lang
@@ -141,9 +146,31 @@ def _transcribe_openrouter(wav_path: str, src_lang: str) -> tuple[list, str]:
                 raise RuntimeError(f"OpenRouter STT error {resp.status_code}: {snippet}")
 
             body = resp.json()
-            text = (body.get("text") or "").strip()
-            if text:
-                segments.append((offset, offset + dur, text))
+            raw_segs = body.get("segments") or []
+            chunk_end = offset + dur
+            added = False
+            for seg in raw_segs:
+                seg_text = (seg.get("text") or "").strip()
+                if not seg_text:
+                    continue
+                try:
+                    s = float(seg.get("start", 0.0))
+                    e = float(seg.get("end", s))
+                except (TypeError, ValueError):
+                    continue
+                # Whisper bazen chunk sinirini biraz asar; pencere icine kirp.
+                abs_s = max(offset, min(chunk_end, offset + s))
+                abs_e = max(abs_s, min(chunk_end, offset + e))
+                if abs_e - abs_s < 0.05:
+                    abs_e = min(chunk_end, abs_s + 0.05)
+                segments.append((abs_s, abs_e, seg_text))
+                added = True
+
+            if not added:
+                # Verbose donmediyse veya bos kaldiysa duz metne dus.
+                text = (body.get("text") or "").strip()
+                if text:
+                    segments.append((offset, chunk_end, text))
 
             offset += dur
             idx += 1

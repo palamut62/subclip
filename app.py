@@ -652,6 +652,17 @@ def stream_subtitle_vtt(job_id):
     return Response(vtt, mimetype="text/vtt")
 
 
+def _is_burned(job: dict) -> bool:
+    f = job.get("file") or ""
+    s = job.get("source_file") or ""
+    if not f or not s:
+        return False
+    try:
+        return os.path.normcase(os.path.normpath(f)) != os.path.normcase(os.path.normpath(s))
+    except (TypeError, ValueError):
+        return False
+
+
 @app.route("/api/status/<job_id>")
 def check_status(job_id):
     job = jobs.get(job_id)
@@ -666,6 +677,7 @@ def check_status(job_id):
         "filename": job.get("filename"),
         "format": job.get("format"),
         "has_subtitle": bool(job.get("subtitle_file") and os.path.exists(job.get("subtitle_file", ""))),
+        "is_burned": _is_burned(job),
         "started_at": job.get("started_at"),
         "updated_at": job.get("updated_at"),
         "elapsed_sec": _elapsed_seconds(job),
@@ -698,6 +710,7 @@ def list_jobs():
             "url": job.get("url", ""),
             "created_at": job.get("created_at", 0),
             "has_subtitle": bool(job.get("subtitle_file") and os.path.exists(job.get("subtitle_file", ""))),
+            "is_burned": _is_burned(job),
         })
     out.sort(key=lambda j: j["created_at"], reverse=True)
     return jsonify(out)
