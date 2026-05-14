@@ -95,7 +95,7 @@ def _load_jobs() -> None:
                 if job.get("status") in {"downloading", "subtitling"}:
                     job["status"] = "error"
                     job["stage"] = "error"
-                    job["error"] = "Uygulama yeniden baslatildi, islem yarim kaldi"
+                    job["error"] = "App was restarted; the job was interrupted"
     except (OSError, json.JSONDecodeError):
         pass
 
@@ -153,16 +153,16 @@ def _parse_ytdlp_progress(line: str) -> tuple[float | None, str | None]:
 
     if "[download]" in lowered:
         if "fragment" in lowered or "frag" in lowered:
-            return percent, "Video parcalari indiriliyor"
-        return percent, "Video indiriliyor"
+            return percent, "Downloading video fragments"
+        return percent, "Downloading video"
     if "merging formats" in lowered:
-        return 96.0, "Video ve ses birlestiriliyor"
+        return 96.0, "Merging video and audio"
     if "[extractaudio]" in lowered:
-        return 97.0, "Ses cikartiliyor"
+        return 97.0, "Extracting audio"
     if "[fixup" in lowered:
-        return 98.0, "Dosya duzenleniyor"
+        return 98.0, "Finalizing file"
     if "destination:" in lowered:
-        return 3.0, "Indirme basladi"
+        return 3.0, "Download started"
     return percent, None
 
 
@@ -196,7 +196,7 @@ def _run_download_process(job: dict, cmd: list[str]) -> list[str]:
                 job,
                 status="downloading",
                 stage="download",
-                phase_message=message or job.get("phase_message") or "Video indiriliyor",
+                phase_message=message or job.get("phase_message") or "Downloading video",
                 progress_percent=percent if percent is not None else job.get("progress_percent", 0),
             )
     proc.wait()
@@ -304,7 +304,7 @@ def run_download(job_id: str, url: str, format_choice: str, format_id: str | Non
                 return
 
         final_stage = "sub_done" if subtitle and format_choice != "audio" else "download_done"
-        _update_job(job, status="done", stage=final_stage, phase_message="Tamamlandi", progress_percent=100)
+        _update_job(job, status="done", stage=final_stage, phase_message="Complete", progress_percent=100)
         job["file"] = chosen
         if chosen.lower().endswith(".mp4") and not job.get("source_file"):
             job["source_file"] = chosen
@@ -328,7 +328,7 @@ def run_subtitle(job_id: str, mode: str = "sidecar", src_lang: str = "auto",
         _update_job(job, status="error", stage="error", error="Source file not found")
         return
     if not src_path.lower().endswith(".mp4"):
-        _update_job(job, status="error", stage="error", error="Altyazi sadece video icin destekleniyor")
+        _update_job(job, status="error", stage="error", error="Subtitles are only supported for video files")
         return
 
     try:
@@ -340,7 +340,7 @@ def run_subtitle(job_id: str, mode: str = "sidecar", src_lang: str = "auto",
         if reuse_existing_srt:
             srt_path = job.get("subtitle_file", "")
             if not srt_path or not os.path.exists(srt_path):
-                _update_job(job, status="error", stage="error", error="Mevcut SRT bulunamadi")
+                _update_job(job, status="error", stage="error", error="Existing SRT not found")
                 return
 
             if mode in ("burn", "both"):
@@ -528,7 +528,7 @@ def start_download():
     jobs[job_id] = {
         "status": "downloading",
         "stage": "queued",
-        "phase_message": "Kuyruga alindi",
+        "phase_message": "Queued",
         "progress_percent": 0,
         "created_at": now,
         "started_at": now,
@@ -568,12 +568,12 @@ def subtitle_existing(job_id):
         else:
             return jsonify({"error": "Source file not found"}), 400
     if not src_file.lower().endswith(".mp4"):
-        return jsonify({"error": "Altyazi sadece MP4 icin destekleniyor"}), 400
+        return jsonify({"error": "Subtitles are only supported for MP4 files"}), 400
 
     data = request.json or {}
     mode = data.get("mode", "sidecar")
     if mode not in ("sidecar", "burn", "both"):
-        return jsonify({"error": "Gecersiz mode"}), 400
+        return jsonify({"error": "Invalid mode"}), 400
     src_lang = _normalize_lang(data.get("src_lang", "auto"), "auto")
     tgt_lang = _normalize_lang(data.get("tgt_lang", "tr"), "tr")
     translate = bool(data.get("translate", True))
@@ -625,7 +625,7 @@ def download_subtitle(job_id):
         return jsonify({"error": "Not found"}), 404
     srt = job.get("subtitle_file", "")
     if not srt or not os.path.exists(srt):
-        return jsonify({"error": "SRT yok"}), 404
+        return jsonify({"error": "No SRT available"}), 404
     base = os.path.splitext(job.get("filename") or os.path.basename(srt))[0]
     return send_file(srt, as_attachment=True, download_name=f"{base}.srt")
 
@@ -639,7 +639,7 @@ def stream_subtitle_vtt(job_id):
         return jsonify({"error": "Not found"}), 404
     srt = job.get("subtitle_file", "")
     if not srt or not os.path.exists(srt):
-        return jsonify({"error": "SRT yok"}), 404
+        return jsonify({"error": "No SRT available"}), 404
     with open(srt, encoding="utf-8") as f:
         body = f.read()
     # SRT -> VTT: zaman damgalarinda ',' yerine '.', basa WEBVTT

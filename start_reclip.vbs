@@ -1,15 +1,27 @@
 Set sh = CreateObject("WScript.Shell")
-ffmpegBin = "C:\Users\umuti\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1-full_build\bin"
-venvScripts = "C:\Users\umuti\projects\reclip\venv\Scripts"
-sh.Environment("PROCESS").Item("PATH") = venvScripts & ";" & ffmpegBin & ";" & sh.Environment("PROCESS").Item("PATH")
-sh.CurrentDirectory = "C:\Users\umuti\projects\reclip"
+Set fso = CreateObject("Scripting.FileSystemObject")
 
-' Eski reclip process'lerini oldur (kod degisiklikleri yansisin)
+scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
+ffmpegBin = "C:\Users\umuti\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1-full_build\bin"
+venvScripts = scriptDir & "\venv\Scripts"
+
+pathVal = sh.Environment("PROCESS").Item("PATH")
+If fso.FolderExists(venvScripts) Then
+    pathVal = venvScripts & ";" & pathVal
+End If
+If fso.FolderExists(ffmpegBin) Then
+    pathVal = ffmpegBin & ";" & pathVal
+End If
+sh.Environment("PROCESS").Item("PATH") = pathVal
+sh.CurrentDirectory = scriptDir
+
+' Bu proje venv'i ile calisan eski python process'lerini oldur
 Set wmi = GetObject("winmgmts:\\.\root\cimv2")
 Set procs = wmi.ExecQuery("SELECT ProcessId, ExecutablePath FROM Win32_Process WHERE Name='pythonw.exe' OR Name='python.exe'")
+needle = LCase(scriptDir & "\venv\")
 For Each p In procs
     If Not IsNull(p.ExecutablePath) Then
-        If InStr(LCase(p.ExecutablePath), "\reclip\venv\") > 0 Then
+        If InStr(LCase(p.ExecutablePath), needle) > 0 Then
             On Error Resume Next
             p.Terminate()
             On Error Goto 0
@@ -17,13 +29,10 @@ For Each p In procs
     End If
 Next
 
-' Port serbest kalmasini bekle
 WScript.Sleep 800
 
-' Yeni server'i baslat
 sh.Run """" & venvScripts & "\pythonw.exe"" app.py", 0, False
 
-' Server ayaga kalkana kadar bekle (max 10 sn)
 ready = False
 For i = 1 To 20
     WScript.Sleep 500

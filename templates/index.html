@@ -1,9 +1,9 @@
 ﻿<!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SubClip - Video Indir ve Altyazi Ekle</title>
+  <title>SubClip - Download videos and add subtitles</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -1121,7 +1121,6 @@ async function addSubtitle(idx) {
       const style = cardSubtitleStyle(idx);
       const restyleOnly = !!c.hasSubtitle;
       if (restyleOnly && mode === 'sidecar') {
-        // Style uygulamasi videoda gorunsun diye sidecar secimi otomatik burn'e cekilir.
         mode = 'burn';
         c.cardSubMode = 'burn';
       }
@@ -1182,8 +1181,8 @@ async function addSubtitle(idx) {
       if (err.includes('HTTP Error 404')) return 'Video not found';
       if (err.includes('copyright')) return 'Blocked due to copyright';
       if (err.includes('geo')) return 'Video not available in your region';
-      if (err.includes('timed out') || err.includes('Timed out')) return 'Request timed out â€” try again';
-      if (err.includes('network') || err.includes('Network')) return 'Network error â€” check your connection';
+      if (err.includes('timed out') || err.includes('Timed out')) return 'Request timed out - try again';
+      if (err.includes('network') || err.includes('Network')) return 'Network error - check your connection';
       if (err.includes('rate_limit_exceeded') || err.includes('Rate limit')) {
         const m = err.match(/try again in ([^.]+)/i);
         const wait = m ? ` Retry in ${m[1]}.` : ' Wait a few minutes.';
@@ -1422,7 +1421,7 @@ async function addSubtitle(idx) {
       }
 
       const timingHtml = c.elapsedSec != null && (c.status === 'downloading' || c.status === 'subtitling' || c.status === 'done')
-        ? `<div class="card-timing">Time: ${fmtElapsed(c.elapsedSec)}${phaseText ? ` Â· ${esc(phaseText)}${progressText}` : ''}</div>`
+        ? `<div class="card-timing">Time: ${fmtElapsed(c.elapsedSec)}${phaseText ? ` &middot; ${esc(phaseText)}${progressText}` : ''}</div>`
         : '';
 
       const trackHtml = (c.status === 'done' && c.hasSubtitle)
@@ -1436,7 +1435,7 @@ async function addSubtitle(idx) {
         <div class="card-thumb">${thumbHtml}</div>
         <div class="card-body">
           <div class="card-title">${esc(c.title || 'Untitled')}</div>
-          <div class="card-meta">${esc(c.uploader)}${c.duration ? ' Â· ' + fmtDur(c.duration) : ''}</div>
+          <div class="card-meta">${esc(c.uploader)}${c.duration ? ' &middot; ' + fmtDur(c.duration) : ''}</div>
           <div class="card-actions">${actionHtml}</div>
           ${timingHtml}
           ${previewHtml}

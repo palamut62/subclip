@@ -120,7 +120,25 @@ def _transcribe_openrouter(wav_path: str, src_lang: str) -> tuple[list, str]:
                 timeout=240,
             )
             if resp.status_code != 200:
-                raise RuntimeError(f"OpenRouter STT error {resp.status_code}: {resp.text[:300]}")
+                snippet = (resp.text or "")[:300]
+                if resp.status_code == 401:
+                    raise RuntimeError(
+                        "OpenRouter STT 401: API key is invalid or revoked. "
+                        "Open Settings and paste a valid key from https://openrouter.ai/keys "
+                        f"(server response: {snippet})"
+                    )
+                if resp.status_code == 402:
+                    raise RuntimeError(
+                        "OpenRouter STT 402: account has insufficient credits. "
+                        f"Top up at https://openrouter.ai/credits (server response: {snippet})"
+                    )
+                if resp.status_code == 404:
+                    raise RuntimeError(
+                        "OpenRouter STT 404: the configured model does not expose an audio "
+                        "transcription endpoint. Set OPENROUTER_STT_MODEL to a Whisper-capable "
+                        f"model (e.g. openai/whisper-large-v3-turbo). Server response: {snippet}"
+                    )
+                raise RuntimeError(f"OpenRouter STT error {resp.status_code}: {snippet}")
 
             body = resp.json()
             text = (body.get("text") or "").strip()
