@@ -29,6 +29,10 @@
   <img src="assets/preview.png" alt="SubClip preview" width="820" />
 </p>
 
+<p align="center">
+  <sub>SubClip was originally forked from <a href="https://github.com/averygan/reclip">averygan/reclip</a> (MIT) and has since been substantially rewritten, rebranded, and extended. Both copyrights are preserved in <a href="LICENSE"><code>LICENSE</code></a>.</sub>
+</p>
+
 ---
 
 ## 📌 Table of Contents
@@ -474,6 +478,7 @@ Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for details.
 
 ## ❤️ Acknowledgments
 
+- [**averygan/reclip**](https://github.com/averygan/reclip) — original project SubClip was forked from. The downloader scaffolding and Flask job model came from there; everything else (OpenRouter STT pipeline, live styling engine, English UI, restyle-without-respend flow, deployment recipes, etc.) is new in SubClip. Released under the MIT License.
 - [**yt-dlp**](https://github.com/yt-dlp/yt-dlp) — the gold standard for media extraction.
 - [**FFmpeg**](https://ffmpeg.org/) — the multimedia swiss army knife.
 - [**OpenRouter**](https://openrouter.ai) — unified access to Whisper-class STT and frontier LLMs.
