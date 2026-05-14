@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/preview-mp3.png" alt="SubClip preview" width="780" />
+  <img src="assets/preview.png" alt="SubClip preview" width="820" />
 </p>
 
 ---
