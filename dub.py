@@ -26,7 +26,7 @@ import elevenlabs_client as eleven
 
 _MODEL = None
 _GROQ_CHUNK_MIN = 20       # Groq'a gonderilecek chunk suresi (dakika)
-_TRANSLATE_BATCH = 80      # tek LLM / Google Translate cagrisindaki cumle sayisi
+_TRANSLATE_BATCH = 25      # tek LLM / Google Translate cagrisindaki cumle sayisi
 _TTS_CONCURRENCY = 2       # ElevenLabs paralel istek limiti (dusuk = daha az rate limit riski)
 _MAX_TTS_SPEED = 1.9
 _MIN_TTS_SPEED = 0.85
@@ -378,43 +378,66 @@ def _translate_openrouter(segments: list, src_lang: str, tgt_lang: str) -> list:
 
     lang_name = _LANG_NAMES.get(tgt_lang, tgt_lang)
     texts = [t for _, _, t in segments]
-    translated: list[str] = []
 
-    for i in range(0, len(texts), _TRANSLATE_BATCH):
-        chunk = texts[i:i + _TRANSLATE_BATCH]
-        # "N|metin" formati - parsing icin guvenlir
+    def _call(chunk: list[str]) -> dict[int, str]:
         numbered = "\n".join(f"{j + 1}|{t}" for j, t in enumerate(chunk))
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"You are a subtitle translator. Translate each line to {lang_name}. "
+                        "Return ONLY the lines in exact format 'N|translation'. "
+                        "Preserve line count. No extra text."
+                    ),
+                },
+                {"role": "user", "content": numbered},
+            ],
+            temperature=0.1,
+        )
+        out_map: dict[int, str] = {}
+        content = (resp.choices[0].message.content or "").strip()
+        for line in content.split("\n"):
+            if "|" in line:
+                num_str, _, text = line.partition("|")
+                try:
+                    out_map[int(num_str.strip())] = text.strip()
+                except ValueError:
+                    pass
+        return out_map
 
+    def _translate_chunk(chunk: list[str]) -> list[str]:
+        """LLM cagrisi + eksik satirlari recursive olarak bolerek tamamla."""
+        if not chunk:
+            return []
         try:
-            resp = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            f"You are a subtitle translator. Translate each line to {lang_name}. "
-                            "Return ONLY the lines in exact format 'N|translation'. "
-                            "Preserve line count. No extra text."
-                        ),
-                    },
-                    {"role": "user", "content": numbered},
-                ],
-                temperature=0.1,
-                max_tokens=4096,
-            )
-            out_map: dict[int, str] = {}
-            for line in resp.choices[0].message.content.strip().split("\n"):
-                if "|" in line:
-                    num_str, _, text = line.partition("|")
-                    try:
-                        out_map[int(num_str.strip())] = text.strip()
-                    except ValueError:
-                        pass
-            for j, orig in enumerate(chunk):
-                translated.append(out_map.get(j + 1, orig))
+            out_map = _call(chunk)
         except Exception:
-            # Bu batch basarisiz olursa orijinali kullan
-            translated.extend(chunk)
+            out_map = {}
+        # Eksikleri topla
+        missing_idx = [j for j in range(len(chunk)) if not out_map.get(j + 1)]
+        if not missing_idx:
+            return [out_map[j + 1] for j in range(len(chunk))]
+        # Tum batch bostan dondu veya buyuk eksik: ikiye bol
+        if len(chunk) > 1 and len(missing_idx) > len(chunk) // 2:
+            mid = len(chunk) // 2
+            left = _translate_chunk(chunk[:mid])
+            right = _translate_chunk(chunk[mid:])
+            return left + right
+        # Az sayida eksik: tek tek tekrar dene
+        result = [out_map.get(j + 1, "") for j in range(len(chunk))]
+        for j in missing_idx:
+            try:
+                single = _call([chunk[j]])
+                result[j] = single.get(1) or chunk[j]
+            except Exception:
+                result[j] = chunk[j]
+        return result
+
+    translated: list[str] = []
+    for i in range(0, len(texts), _TRANSLATE_BATCH):
+        translated.extend(_translate_chunk(texts[i:i + _TRANSLATE_BATCH]))
 
     return [(s, e, tr) for (s, e, _), tr in zip(segments, translated)]
 
